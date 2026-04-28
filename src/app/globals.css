@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-surface text-white antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-accent hover:bg-accent-hover text-black font-semibold px-4 py-2.5 rounded-xl transition-all text-sm;
+  }
+  .btn-secondary {
+    @apply bg-surface-2 hover:bg-surface-3 text-white/80 font-medium px-4 py-2.5 rounded-xl transition-all border border-border text-sm;
+  }
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2.5 rounded-xl transition-all text-sm;
+  }
+  .btn-ghost {
+    @apply hover:bg-surface-2 text-white/60 hover:text-white/80 px-4 py-2.5 rounded-xl transition-all text-sm;
+  }
+  .input-field {
+    @apply bg-surface-2 border border-border rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-accent/50 text-sm w-full;
+  }
+  .card {
+    @apply bg-surface-1 border border-border rounded-2xl p-5;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+.map-dark .leaflet-tile-pane {
+  filter: brightness(0.7) invert(1) contrast(2.8) hue-rotate(200deg) saturate(0.3) brightness(0.8);
+}
+
+.map-dark .leaflet-control-zoom a {
+  background: #1a1a1a;
+  color: #aaa;
+  border-color: #333;
+}
+
+.map-dark .leaflet-control-attribution {
+  background: rgba(0,0,0,0.6) !important;
+  color: #666 !important;
+}
+.map-dark .leaflet-control-attribution a {
+  color: #888 !important;
+}
