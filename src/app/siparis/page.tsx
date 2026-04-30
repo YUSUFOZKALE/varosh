@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import ItemCustomizeModal, { type MenuItemOption, type CustomizedItem } from "@/components/item-customize-modal";
@@ -71,7 +71,7 @@ function getCategoryLayout(catName: string): CardLayout {
 
 type Step = "phone" | "register" | "address" | "menu" | "done";
 
-export default function SiparisPage() {
+function SiparisContent() {
   const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
@@ -924,5 +924,17 @@ export default function SiparisPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function SiparisPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+        <div className="w-10 h-10 border-3 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+      </div>
+    }>
+      <SiparisContent />
+    </Suspense>
   );
 }
