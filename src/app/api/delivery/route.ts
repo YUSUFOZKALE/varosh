@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
+import { getShopLocation } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
-const SHOP_LAT = 37.3730;
-const SHOP_LNG = 36.0761;
 const MAX_WAIT_MINUTES = 5;
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -42,6 +41,7 @@ export async function GET() {
     .all();
 
   // Akıllı sıralama
+  const [SHOP_LAT, SHOP_LNG] = getShopLocation();
   const now = Date.now();
   const sorted = deliveries.map((d) => {
     const readyAt = d.preparedAt ? new Date(d.preparedAt).getTime() : null;

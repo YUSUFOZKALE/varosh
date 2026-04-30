@@ -1,4 +1,4 @@
-const SHOP_LOCATION: [number, number] = [37.3750, 36.6200];
+const SHOP_LOCATION: [number, number] = [37.3730, 36.0761];
 
 interface RoutePoint {
   id: number;

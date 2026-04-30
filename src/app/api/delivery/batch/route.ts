@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
 import QRCode from "qrcode";
+import { getShopLocation } from "@/lib/settings";
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
@@ -21,9 +22,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ batch, orders });
 }
 
-const SHOP_LAT = 37.3730;
-const SHOP_LNG = 36.0761;
-
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -34,12 +32,12 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function sortByRoute(orders: { id: number; deliveryLatitude: number | null; deliveryLongitude: number | null }[]) {
+function sortByRoute(orders: { id: number; deliveryLatitude: number | null; deliveryLongitude: number | null }[], shopLat: number, shopLng: number) {
   if (orders.length <= 1) return orders.map((o) => o.id);
   const sorted: typeof orders = [];
   const remaining = [...orders];
-  let curLat = SHOP_LAT;
-  let curLng = SHOP_LNG;
+  let curLat = shopLat;
+  let curLng = shopLng;
   while (remaining.length > 0) {
     let nearest = 0;
     let nearestDist = Infinity;
@@ -62,12 +60,12 @@ function sortByRoute(orders: { id: number; deliveryLatitude: number | null; deli
 export async function POST(req: NextRequest) {
   const { orderIds, courierId, baseUrl } = await req.json();
   const db = getDb();
+  const [SHOP_LAT, SHOP_LNG] = getShopLocation();
 
-  // Siparişleri DB'den çek ve rota sırasına diz
   const orders = orderIds.map((id: number) =>
     db.select().from(schema.orders).where(eq(schema.orders.id, id)).get()
   ).filter(Boolean);
-  const routedIds = sortByRoute(orders);
+  const routedIds = sortByRoute(orders, SHOP_LAT, SHOP_LNG);
 
   const token = Math.random().toString(36).slice(2, 10);
 
@@ -79,7 +77,7 @@ export async function POST(req: NextRequest) {
     })
     .run();
 
-  const url = `${baseUrl || "http://localhost:3000"}/courier/batch/${token}`;
+  const url = `${baseUrl || process.env.SITE_URL || "http://localhost:3002"}/courier/batch/${token}`;
   const qrDataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 });
 
   return NextResponse.json({ token, url, qr: qrDataUrl, routedOrderIds: routedIds });

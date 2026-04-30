@@ -60,7 +60,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [wpQr, setWpQr] = useState<string | null>(null);
-  const [botStatus, setBotStatus] = useState<{ connected: boolean; hasQR: boolean; uptime: number } | null>(null);
+  const [botStatus, setBotStatus] = useState<{ connected: boolean; hasQR: boolean; uptime: number; phone?: string } | null>(null);
   const [botQr, setBotQr] = useState<string | null>(null);
 
   const load = useCallback(async () => {

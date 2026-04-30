@@ -87,7 +87,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone: order.customerPhone, status, orderId: id }),
-    }).catch(() => {});
+    }).catch((e) => console.error("WhatsApp bildirim hatasi:", e.message));
   }
 
   return NextResponse.json(updated);

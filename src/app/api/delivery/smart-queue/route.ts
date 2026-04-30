@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, sql, inArray } from "drizzle-orm";
+import { getShopLocation } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
-const SHOP_LAT = 37.3730;
-const SHOP_LNG = 36.0761;
 const MAX_WAIT_MINUTES = 5;
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -38,8 +37,8 @@ const DIRECTIONS = [
   { name: "Kuzeybati", emoji: "↖️", min: 292.5, max: 337.5 },
 ];
 
-function getDirection(lat: number, lng: number) {
-  const b = bearing(SHOP_LAT, SHOP_LNG, lat, lng);
+function getDirection(lat: number, lng: number, shopLat: number, shopLng: number) {
+  const b = bearing(shopLat, shopLng, lat, lng);
   for (const d of DIRECTIONS) {
     if (d.name === "Kuzey") {
       if (b >= d.min || b < d.max) return d;
@@ -63,7 +62,7 @@ interface Order {
   preparedAt: string | null;
 }
 
-function clusterByDirection(orders: Order[]) {
+function clusterByDirection(orders: Order[], shopLat: number, shopLng: number) {
   const groups: Record<string, { direction: typeof DIRECTIONS[0]; orders: Order[]; distFromShop: number }> = {};
   const noLocation: Order[] = [];
 
@@ -72,27 +71,25 @@ function clusterByDirection(orders: Order[]) {
       noLocation.push(o);
       continue;
     }
-    const dir = getDirection(o.deliveryLatitude, o.deliveryLongitude);
+    const dir = getDirection(o.deliveryLatitude, o.deliveryLongitude, shopLat, shopLng);
     if (!groups[dir.name]) {
       groups[dir.name] = { direction: dir, orders: [], distFromShop: 0 };
     }
     groups[dir.name].orders.push(o);
-    groups[dir.name].distFromShop += haversine(SHOP_LAT, SHOP_LNG, o.deliveryLatitude, o.deliveryLongitude);
+    groups[dir.name].distFromShop += haversine(shopLat, shopLng, o.deliveryLatitude, o.deliveryLongitude);
   }
 
-  // Her grubun ortalama mesafesini hesapla
   for (const g of Object.values(groups)) {
     g.distFromShop = g.orders.length > 0 ? g.distFromShop / g.orders.length : 0;
   }
 
   const sorted = Object.values(groups).sort((a, b) => b.orders.length - a.orders.length);
 
-  // Rota sıralaması: her grup içinde dükkana en yakından en uzağa
   for (const g of sorted) {
     g.orders.sort((a, b) => {
-      const da = haversine(SHOP_LAT, SHOP_LNG, a.deliveryLatitude!, a.deliveryLongitude!);
-      const db = haversine(SHOP_LAT, SHOP_LNG, b.deliveryLatitude!, b.deliveryLongitude!);
-      return da - db;
+      const da = haversine(shopLat, shopLng, a.deliveryLatitude!, a.deliveryLongitude!);
+      const db2 = haversine(shopLat, shopLng, b.deliveryLatitude!, b.deliveryLongitude!);
+      return da - db2;
     });
   }
 
@@ -105,6 +102,7 @@ function clusterByDirection(orders: Order[]) {
 
 export async function GET() {
   const db = getDb();
+  const [SHOP_LAT, SHOP_LNG] = getShopLocation();
 
   const allOrders = db
     .select()
@@ -125,10 +123,8 @@ export async function GET() {
     return { ...o, waitMinutes: waitMin, urgent: waitMin >= MAX_WAIT_MINUTES };
   });
 
-  // Yeni siparişleri yön bazlı kümele
-  const newClusters = clusterByDirection(newOrders);
-  // Hazırları yön bazlı kümele
-  const readyClusters = clusterByDirection(ready);
+  const newClusters = clusterByDirection(newOrders, SHOP_LAT, SHOP_LNG);
+  const readyClusters = clusterByDirection(ready, SHOP_LAT, SHOP_LNG);
 
   return NextResponse.json({
     preparing,
@@ -184,7 +180,7 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: order.customerPhone, status: "preparing", orderId: id }),
-      }).catch(() => {});
+      }).catch((e) => console.error("WhatsApp bildirim hatasi:", e.message));
     }
   }
 

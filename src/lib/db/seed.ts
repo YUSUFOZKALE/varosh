@@ -6,14 +6,14 @@ export function seedDatabase() {
   const defaultSettings = [
     { key: "business_name", value: "Varosh Streetfood" },
     { key: "business_address", value: "Kadirli, Osmaniye" },
-    { key: "business_phone", value: "+905551234567" },
+    { key: "business_phone", value: "+905461483249" },
     { key: "working_hours_start", value: "10:00" },
     { key: "working_hours_end", value: "23:00" },
     { key: "default_delivery_fee", value: "20" },
     { key: "min_order_amount", value: "100" },
     { key: "estimated_delivery_minutes", value: "30" },
     { key: "order_auto_accept", value: "true" },
-    { key: "customer_base_url", value: "http://localhost:3000" },
+    { key: "customer_base_url", value: "" },
     { key: "shop_latitude", value: "37.372986" },
     { key: "shop_longitude", value: "36.076054" },
     { key: "loyalty_points_per_tl", value: "0.1" },
@@ -68,10 +68,10 @@ export function seedDatabase() {
 
   db.insert(schema.staff)
     .values({
-      phone: "+905551234567",
+      phone: "+905461483249",
       name: "Patron",
       role: "owner",
-      pin: "1234",
+      pin: "5791",
       isActive: true,
     })
     .onConflictDoNothing()

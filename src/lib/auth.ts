@@ -4,7 +4,8 @@ import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 
 const AUTH_COOKIE = "varosh_session";
-const SECRET = process.env.AUTH_SECRET || "dev-secret-change-me";
+const SECRET = process.env.AUTH_SECRET!;
+if (!process.env.AUTH_SECRET) throw new Error("AUTH_SECRET ortam degiskeni tanimlanmali (.env dosyasina ekleyin)");
 
 interface SessionPayload {
   staffId: number;
