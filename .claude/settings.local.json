@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\yusuf\\\\OneDrive\\\\Desktop\" -Filter \"leptin-pro*\" -Directory)",
+      "Bash(Select-Object FullName)",
+      "PowerShell(Get-Item *)",
+      "Bash(find *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\yusuf\\\\OneDrive\\\\Desktop\\\\varosh\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\yusuf\\\\OneDrive\\\\Desktop\\\\varosh\\\\certificates\" -Recurse)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(npx next *)",
+      "PowerShell($job = Start-Process -FilePath \"npx\" -ArgumentList \"next dev -p 3000\" -WorkingDirectory \"C:\\\\Users\\\\yusuf\\\\OneDrive\\\\Desktop\\\\varosh\" -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 8; try { \\(Invoke-WebRequest -Uri \"http://localhost:3000\" -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { $_.Exception.Message })",
+      "PowerShell(New-Item *)",
+      "PowerShell(try { \\(Invoke-WebRequest -Uri \"http://localhost:3000/api/tables\" -UseBasicParsing -TimeoutSec 5\\).Content } catch { $_.Exception.Message })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/settings\" -UseBasicParsing -TimeoutSec 5 -MaximumRedirection 0 -ErrorAction SilentlyContinue; $r.StatusCode } catch { if \\($_.Exception.Response\\) { [int]$_.Exception.Response.StatusCode } else { $_.Exception.Message } })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/pos\" -UseBasicParsing -TimeoutSec 5 -MaximumRedirection 0 -ErrorAction SilentlyContinue; $r.StatusCode } catch { if \\($_.Exception.Response\\) { [int]$_.Exception.Response.StatusCode } else { $_.Exception.Message } })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/receipt/1\" -UseBasicParsing -TimeoutSec 8 -MaximumRedirection 0 -ErrorAction SilentlyContinue; $r.StatusCode } catch { if \\($_.Exception.Response\\) { [int]$_.Exception.Response.StatusCode } else { $_.Exception.Message } })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/table/1\" -UseBasicParsing -TimeoutSec 8; $r.StatusCode } catch { if \\($_.Exception.Response\\) { [int]$_.Exception.Response.StatusCode } else { $_.Exception.Message } })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/pos\" -UseBasicParsing -TimeoutSec 8 -MaximumRedirection 0; $r.StatusCode } catch { if \\($_.Exception.Response\\) { [int]$_.Exception.Response.StatusCode } else { $_.Exception.Message } })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/kitchen\" -UseBasicParsing -TimeoutSec 8 -MaximumRedirection 0; $r.StatusCode } catch { if \\($_.Exception.Response\\) { [int]$_.Exception.Response.StatusCode } else { $_.Exception.Message } })",
+      "Bash(Get-ChildItem -Path . -Directory)",
+      "Bash(Select-Object Name)",
+      "PowerShell(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback' -and $_.IPAddress -notmatch '^169\\\\.' } | Select-Object IPAddress, InterfaceAlias)",
+      "PowerShell(Start-Sleep -Seconds 8; try { $r = Invoke-WebRequest -Uri \"http://192.168.18.5:3000/table/1\" -UseBasicParsing -TimeoutSec 5; \"Status: $\\($r.StatusCode\\)\" } catch { \"Error: $_\" })",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\yusuf\\\\OneDrive\\\\Desktop\\\\varosh\" -Recurse -Directory -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -First 20)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:3000/api/migrate-prices\" -Method POST | ConvertTo-Json)",
+      "PowerShell(curl.exe -s -X POST http://localhost:3000/api/migrate-prices)",
+      "PowerShell(Remove-Item *)"
+    ]
+  }
+}
