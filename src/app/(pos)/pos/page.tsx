@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ItemCustomizeModal, { type MenuItemOption, type CustomizedItem } from "@/components/item-customize-modal";
 
 interface Category { id: number; name: string; }
 interface MenuItem { id: number; categoryId: number; name: string; price: number; deliveryPrice: number | null; isAvailable: boolean; prepTimeMinutes: number; imageUrl: string | null; description: string | null; }
-interface CartItem { key: string; menuItemId: number; name: string; price: number; quantity: number; imageUrl: string | null; removedIngredients: string[]; selectedExtras: number[]; }
+interface CartItem { key: string; menuItemId: number; name: string; price: number; quantity: number; imageUrl: string | null; removedIngredients: string[]; selectedExtras: number[]; notes: string; }
 
 interface Customer { id: number; phone: string; name: string | null; address: string | null; orderCount: number; totalSpent: number }
 type OrderType = "dine_in" | "takeaway" | "delivery";
@@ -36,6 +36,9 @@ export default function PosPage() {
   const [deliveryFeeAmount, setDeliveryFeeAmount] = useState(20);
   const [options, setOptions] = useState<MenuItemOption[]>([]);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
+  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isScrolling, setIsScrolling] = useState(false);
 
   const load = useCallback(async () => {
     const [cRes, iRes, custRes, setRes, optRes] = await Promise.all([
@@ -80,31 +83,43 @@ export default function PosPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filteredItems = items.filter((i) => i.isAvailable && (!selectedCat || i.categoryId === selectedCat));
-
-  function handleItemClick(item: MenuItem) {
-    const itemOpts = options.filter((o) => o.menuItemId === item.id);
-    if (itemOpts.length > 0) {
-      setCustomizeItem(item);
-    } else {
-      addSimpleItem(item);
+  function scrollToCategory(catId: number) {
+    setSelectedCat(catId);
+    setIsScrolling(true);
+    const el = sectionRefs.current[catId];
+    const container = scrollContainerRef.current;
+    if (el && container) {
+      const top = el.offsetTop - container.offsetTop;
+      container.scrollTo({ top, behavior: "smooth" });
+      setTimeout(() => setIsScrolling(false), 500);
     }
   }
 
-  function addSimpleItem(item: MenuItem) {
-    const key = `${item.id}_simple`;
-    setCart((prev) => {
-      const existing = prev.find((c) => c.key === key);
-      if (existing) {
-        return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + 1 } : c);
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    function handleScroll() {
+      if (isScrolling) return;
+      for (const cat of [...categories].reverse()) {
+        const el = sectionRefs.current[cat.id];
+        if (el && container) {
+          const top = el.offsetTop - container.offsetTop - container.scrollTop;
+          if (top <= 10) { setSelectedCat(cat.id); break; }
+        }
       }
-      const price = orderType === "delivery" ? (item.deliveryPrice || item.price) : item.price;
-      return [...prev, { key, menuItemId: item.id, name: item.name, price, quantity: 1, imageUrl: item.imageUrl, removedIngredients: [], selectedExtras: [] }];
-    });
+    }
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [categories, isScrolling]);
+
+  const availableItems = items.filter((i) => i.isAvailable);
+
+  function handleItemClick(item: MenuItem) {
+    setCustomizeItem(item);
   }
 
   function handleCustomizedAdd(ci: CustomizedItem) {
-    const key = `${ci.menuItemId}_${ci.removedIngredients.sort().join(",")}_${ci.selectedExtras.sort().join(",")}`;
+    const key = `${ci.menuItemId}_${ci.removedIngredients.sort().join(",")}_${ci.selectedExtras.sort().join(",")}_${ci.notes}`;
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
       if (existing) {
@@ -112,7 +127,7 @@ export default function PosPage() {
       }
       return [...prev, {
         key, menuItemId: ci.menuItemId, name: ci.name, price: ci.finalPrice, quantity: ci.quantity, imageUrl: ci.imageUrl,
-        removedIngredients: ci.removedIngredients, selectedExtras: ci.selectedExtras,
+        removedIngredients: ci.removedIngredients, selectedExtras: ci.selectedExtras, notes: ci.notes,
       }];
     });
   }
@@ -146,6 +161,7 @@ export default function PosPage() {
         quantity: c.quantity,
         selectedOptions: c.selectedExtras.length > 0 ? c.selectedExtras : undefined,
         removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
+        notes: c.notes || undefined,
       })),
     };
 
@@ -200,10 +216,11 @@ export default function PosPage() {
         <div className="flex gap-1.5 px-4 py-3 overflow-x-auto shrink-0 no-scrollbar">
           {categories.map((cat) => {
             const icon = CATEGORY_ICONS[cat.name] || "🍽️";
+            const catItemCount = availableItems.filter((i) => i.categoryId === cat.id).length;
             return (
               <button
                 key={cat.id}
-                onClick={() => setSelectedCat(cat.id)}
+                onClick={() => scrollToCategory(cat.id)}
                 className={`flex items-center gap-1.5 px-5 py-3 rounded-xl text-sm font-semibold whitespace-nowrap transition-all active:scale-95 ${
                   selectedCat === cat.id
                     ? "bg-amber-500 text-black shadow-lg shadow-amber-500/20"
@@ -212,58 +229,73 @@ export default function PosPage() {
               >
                 <span>{icon}</span>
                 {cat.name}
+                <span className={`text-xs ${selectedCat === cat.id ? "text-black/40" : "text-white/20"}`}>({catItemCount})</span>
               </button>
             );
           })}
         </div>
 
-        {/* Product Grid */}
-        <div className="flex-1 overflow-y-auto px-4 pb-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-            {filteredItems.map((item) => {
-              const qty = cart.filter(c => c.menuItemId === item.id).reduce((s, c) => s + c.quantity, 0);
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleItemClick(item)}
-                  className={`relative bg-neutral-900 border rounded-2xl overflow-hidden text-left transition-all active:scale-[0.97] ${
-                    qty > 0
-                      ? "border-amber-500/50 shadow-lg shadow-amber-500/10"
-                      : "border-neutral-800/60 hover:border-neutral-700"
-                  }`}
-                >
-                  {item.imageUrl && (
-                    <div className="relative">
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-28 object-cover" />
-                      {qty > 0 && (
-                        <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
-                          {qty}
+        {/* All Categories & Products */}
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
+          {categories.map((cat) => {
+            const catItems = availableItems.filter((i) => i.categoryId === cat.id);
+            if (catItems.length === 0) return null;
+            const icon = CATEGORY_ICONS[cat.name] || "🍽️";
+            return (
+              <div key={cat.id} ref={(el) => { sectionRefs.current[cat.id] = el; }} className="mb-5">
+                <div className="flex items-center gap-2 mb-2.5 pt-1">
+                  <span className="text-lg">{icon}</span>
+                  <h3 className="text-base font-bold text-white">{cat.name}</h3>
+                  <span className="text-xs text-white/20">({catItems.length})</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {catItems.map((item) => {
+                    const qty = cart.filter(c => c.menuItemId === item.id).reduce((s, c) => s + c.quantity, 0);
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleItemClick(item)}
+                        className={`relative bg-neutral-900 border rounded-2xl overflow-hidden text-left transition-all active:scale-[0.97] ${
+                          qty > 0
+                            ? "border-amber-500/50 shadow-lg shadow-amber-500/10"
+                            : "border-neutral-800/60 hover:border-neutral-700"
+                        }`}
+                      >
+                        {item.imageUrl && (
+                          <div className="relative">
+                            <img src={item.imageUrl} alt={item.name} className="w-full h-28 object-cover" />
+                            {qty > 0 && (
+                              <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
+                                {qty}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!item.imageUrl && qty > 0 && (
+                          <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
+                            {qty}
+                          </div>
+                        )}
+                        <div className="p-3">
+                          <p className="font-semibold text-sm mb-1 line-clamp-2 text-white/90">{item.name}</p>
+                          {item.description && (
+                            <p className="text-white/30 text-[11px] mb-2 line-clamp-1">{item.description}</p>
+                          )}
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-amber-400 font-extrabold text-lg">{item.price}</span>
+                            <span className="text-amber-400/60 text-xs font-semibold">TL</span>
+                            {item.deliveryPrice && item.deliveryPrice !== item.price && (
+                              <span className="text-white/20 text-[10px] ml-auto">Paket {item.deliveryPrice} TL</span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )}
-                  {!item.imageUrl && qty > 0 && (
-                    <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
-                      {qty}
-                    </div>
-                  )}
-                  <div className="p-3">
-                    <p className="font-semibold text-sm mb-1 line-clamp-2 text-white/90">{item.name}</p>
-                    {item.description && (
-                      <p className="text-white/30 text-[11px] mb-2 line-clamp-1">{item.description}</p>
-                    )}
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-amber-400 font-extrabold text-lg">{item.price}</span>
-                      <span className="text-amber-400/60 text-xs font-semibold">TL</span>
-                      {item.deliveryPrice && item.deliveryPrice !== item.price && (
-                        <span className="text-white/20 text-[10px] ml-auto">Paket {item.deliveryPrice} TL</span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -381,6 +413,9 @@ export default function PosPage() {
                           )}
                           {c.selectedExtras.length > 0 && (
                             <p className="text-amber-400/50 text-[10px] mt-0.5">+ {c.selectedExtras.map((id) => options.find((o) => o.id === id)?.optionName).filter(Boolean).join(", ")}</p>
+                          )}
+                          {c.notes && (
+                            <p className="text-blue-400/60 text-[10px] mt-0.5 italic">📝 {c.notes}</p>
                           )}
                         </div>
                         <button onClick={() => removeFromCart(c.key)} className="text-white/15 hover:text-red-400 transition-colors shrink-0">

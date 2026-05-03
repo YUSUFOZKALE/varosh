@@ -54,6 +54,15 @@ const SETTING_GROUPS = [
   },
 ];
 
+interface TableRow {
+  id: number;
+  number: number;
+  label: string | null;
+  token: string;
+  capacity: number;
+  isActive: boolean;
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [businessStatus, setBusinessStatus] = useState<string>("closed");
@@ -62,6 +71,69 @@ export default function SettingsPage() {
   const [wpQr, setWpQr] = useState<string | null>(null);
   const [botStatus, setBotStatus] = useState<{ connected: boolean; hasQR: boolean; uptime: number; phone?: string } | null>(null);
   const [botQr, setBotQr] = useState<string | null>(null);
+
+  const [tableInput, setTableInput] = useState<string>("");
+  const [tablesData, setTablesData] = useState<TableRow[]>([]);
+  const [tableQrs, setTableQrs] = useState<Record<number, string>>({});
+  const [tablesLoading, setTablesLoading] = useState(false);
+  const [tablesSaving, setTablesSaving] = useState(false);
+
+  const loadTables = useCallback(async () => {
+    setTablesLoading(true);
+    try {
+      const res = await fetch("/api/tables");
+      const data: TableRow[] = await res.json();
+      const active = data.filter((t) => t.isActive);
+      setTablesData(active);
+      setTableInput(active.length.toString());
+      const qrs: Record<number, string> = {};
+      for (const t of active) {
+        const url = `${window.location.origin}/table/${t.number}`;
+        qrs[t.number] = await QRCode.toDataURL(url, {
+          width: 300,
+          margin: 1,
+          color: { dark: "#F59E0B", light: "#1a1a1a" },
+        });
+      }
+      setTableQrs(qrs);
+    } catch { /* ignore */ }
+    setTablesLoading(false);
+  }, []);
+
+  async function saveTables() {
+    const num = parseInt(tableInput);
+    if (!num || num < 1 || num > 200) return;
+    setTablesSaving(true);
+    try {
+      await fetch("/api/tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count: num }),
+      });
+      await loadTables();
+    } catch { /* ignore */ }
+    setTablesSaving(false);
+  }
+
+  function printTableQr(tableNumber: number, qrDataUrl: string) {
+    const w = window.open("", "_blank", "width=400,height=500");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>Masa ${tableNumber} QR</title><style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;font-family:system-ui}img{width:280px;height:280px;border-radius:16px}h1{font-size:48px;margin:20px 0 4px;color:#F59E0B}p{font-size:14px;opacity:.5;margin:0}@media print{body{background:#fff;color:#000}h1{color:#000}}</style></head><body><img src="${qrDataUrl}" /><h1>Masa ${tableNumber}</h1><p>Varosh Streetfood</p><script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+    w.document.close();
+  }
+
+  function printAllQrs() {
+    const w = window.open("", "_blank", "width=800,height=1000");
+    if (!w) return;
+    let cards = "";
+    for (const t of tablesData) {
+      const qr = tableQrs[t.number];
+      if (!qr) continue;
+      cards += `<div class="card"><img src="${qr}" /><h2>Masa ${t.number}</h2><p>QR okutarak siparis ver</p></div>`;
+    }
+    w.document.write(`<!DOCTYPE html><html><head><title>Tum Masa QR Kodlari</title><style>body{margin:0;padding:20px;background:#1a1a1a;color:#fff;font-family:system-ui}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px}.card{background:#262626;border-radius:16px;padding:16px;text-align:center}img{width:180px;height:180px;border-radius:12px}h2{font-size:24px;margin:10px 0 2px;color:#F59E0B}p{font-size:11px;opacity:.4;margin:0}@media print{body{background:#fff;color:#000}.card{background:#f5f5f5;break-inside:avoid}h2{color:#000}}</style></head><body><div class="grid">${cards}</div><script>setTimeout(()=>window.print(),500)<\/script></body></html>`);
+    w.document.close();
+  }
 
   const load = useCallback(async () => {
     const [settingsRes, statusRes] = await Promise.all([
@@ -73,7 +145,7 @@ export default function SettingsPage() {
     setBusinessStatus(statusData.status);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadTables(); }, [load, loadTables]);
 
   // WhatsApp Bot durum kontrolu
   useEffect(() => {
@@ -196,6 +268,67 @@ export default function SettingsPage() {
           </Button>
         </div>
         <p className="text-xs text-white/30 mt-2">Sunucu yedegi ./backups klasorune kaydedilir (max 10 adet)</p>
+      </div>
+
+      {/* Masa Yonetimi */}
+      <div className="card mb-6">
+        <h3 className="text-lg font-semibold mb-4">Masa Yonetimi</h3>
+        <div className="flex items-end gap-3 mb-4">
+          <div className="flex-1">
+            <label className="text-xs text-white/40 mb-1 block">Masa Sayisi</label>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={tableInput}
+              onChange={(e) => setTableInput(e.target.value)}
+              className="input-field"
+              placeholder="Ornegin: 10"
+            />
+          </div>
+          <Button onClick={saveTables} disabled={tablesSaving}>
+            {tablesSaving ? "Olusturuluyor..." : "Masalari Olustur"}
+          </Button>
+          {tablesData.length > 0 && (
+            <Button variant="secondary" onClick={printAllQrs}>
+              Tumunu Yazdir
+            </Button>
+          )}
+        </div>
+        {tablesLoading ? (
+          <div className="text-center py-8">
+            <div className="w-8 h-8 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin mx-auto" />
+            <p className="text-white/30 text-sm mt-2">Masalar yukleniyor...</p>
+          </div>
+        ) : tablesData.length === 0 ? (
+          <div className="bg-surface-2 rounded-xl p-6 text-center">
+            <div className="text-3xl mb-2 opacity-40">🪑</div>
+            <p className="text-white/40 text-sm">Henuz masa olusturulmadi. Yukardaki alana masa sayisini girip &quot;Masalari Olustur&quot; butonuna basin.</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-white/30 mb-3">{tablesData.length} aktif masa &middot; QR kodlar mekan fiyatlariyla menuyu acar &middot; Tiklayarak tek tek yazdirabilirsiniz</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {tablesData.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => tableQrs[t.number] && printTableQr(t.number, tableQrs[t.number])}
+                  className="bg-surface-2 rounded-xl p-3 text-center hover:bg-surface-2/80 transition-all hover:ring-1 hover:ring-amber-500/30 group"
+                >
+                  {tableQrs[t.number] ? (
+                    <img src={tableQrs[t.number]} alt={`Masa ${t.number}`} className="w-full aspect-square rounded-lg mb-2" />
+                  ) : (
+                    <div className="w-full aspect-square rounded-lg bg-neutral-800 mb-2 flex items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+                    </div>
+                  )}
+                  <p className="text-amber-400 font-bold text-sm">Masa {t.number}</p>
+                  <p className="text-white/20 text-[10px] mt-0.5 group-hover:text-white/40">Tiklayip yazdir</p>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* QR Codes */}

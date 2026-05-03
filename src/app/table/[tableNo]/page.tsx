@@ -15,6 +15,7 @@ interface CartItem {
   imageUrl: string | null;
   removedIngredients: string[];
   selectedExtras: number[];
+  notes: string;
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -96,27 +97,11 @@ export default function TableOrderPage() {
   }, [categories, isScrolling]);
 
   function handleItemClick(item: MenuItem) {
-    const itemOpts = options.filter((o) => o.menuItemId === item.id);
-    if (itemOpts.length > 0) {
-      setCustomizeItem(item);
-    } else {
-      addSimpleItem(item);
-    }
-  }
-
-  function addSimpleItem(item: MenuItem) {
-    const key = `${item.id}_simple`;
-    setCart((prev) => {
-      const existing = prev.find((c) => c.key === key);
-      if (existing) {
-        return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + 1 } : c);
-      }
-      return [...prev, { key, menuItemId: item.id, name: item.name, price: item.price, quantity: 1, imageUrl: item.imageUrl, removedIngredients: [], selectedExtras: [] }];
-    });
+    setCustomizeItem(item);
   }
 
   function handleCustomizedAdd(ci: CustomizedItem) {
-    const key = `${ci.menuItemId}_${ci.removedIngredients.sort().join(",")}_${ci.selectedExtras.sort().join(",")}`;
+    const key = `${ci.menuItemId}_${ci.removedIngredients.sort().join(",")}_${ci.selectedExtras.sort().join(",")}_${ci.notes}`;
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
       if (existing) {
@@ -131,6 +116,7 @@ export default function TableOrderPage() {
         imageUrl: ci.imageUrl,
         removedIngredients: ci.removedIngredients,
         selectedExtras: ci.selectedExtras,
+        notes: ci.notes,
       }];
     });
   }
@@ -164,6 +150,7 @@ export default function TableOrderPage() {
           quantity: c.quantity,
           selectedOptions: c.selectedExtras.length > 0 ? c.selectedExtras : undefined,
           removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
+          notes: c.notes || undefined,
         })),
         notes: notes.trim() || undefined,
       }),
@@ -288,29 +275,14 @@ export default function TableOrderPage() {
               <div className={`${layout === "portrait" ? "grid grid-cols-2 gap-3" : layout === "square" ? "grid grid-cols-2 gap-3" : "space-y-3"}`}>
                 {catItems.map((item) => {
                   const qty = getItemQty(item.id);
-                  const hasOpts = options.some((o) => o.menuItemId === item.id);
                   const catColor = CATEGORY_COLORS[cat.name] || "from-neutral-800/60 to-neutral-700/30";
 
-                  const qtyControl = qty > 0 && !hasOpts ? (
-                    <div className="flex items-center gap-0 bg-neutral-800 rounded-full">
-                      <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700">
-                        {qty === 1 ? (
-                          <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        ) : (
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" /></svg>
-                        )}
-                      </button>
-                      <span className="text-white font-bold text-sm min-w-[28px] text-center">{qty}</span>
-                      <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                      </button>
-                    </div>
-                  ) : (
+                  const addBtn = (size: "sm" | "md") => (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleItemClick(item); }}
-                      className="bg-amber-500 hover:bg-amber-400 active:scale-95 text-black font-bold text-sm px-5 py-2 rounded-full transition-all shadow-lg shadow-amber-500/20"
+                      className={`bg-amber-500 hover:bg-amber-400 active:scale-95 text-black font-bold rounded-full transition-all shadow-lg shadow-amber-500/20 ${size === "sm" ? "text-xs px-3 py-1.5" : "text-sm px-5 py-2"}`}
                     >
-                      Ekle
+                      {qty > 0 ? `${qty}x Ekle` : "Ekle"}
                     </button>
                   );
 
@@ -328,7 +300,7 @@ export default function TableOrderPage() {
 
                   if (layout === "wide") {
                     return (
-                      <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
+                      <div key={item.id} onClick={() => handleItemClick(item)} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all cursor-pointer ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
                         <div className="relative">
                           {item.imageUrl ? (
                             <img src={item.imageUrl} alt={item.name} className="w-full aspect-[16/9] object-cover" />
@@ -341,83 +313,35 @@ export default function TableOrderPage() {
                         </div>
                         <div className="px-4 pb-4 flex items-center justify-between">
                           <span className="text-amber-400 font-extrabold text-xl">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
-                          {qtyControl}
+                          {addBtn("md")}
                         </div>
                       </div>
                     );
                   }
 
-                  if (layout === "portrait") {
+                  if (layout === "portrait" || layout === "square") {
+                    const aspect = layout === "portrait" ? "aspect-[2/3]" : "aspect-square";
                     return (
-                      <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
+                      <div key={item.id} onClick={() => handleItemClick(item)} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all cursor-pointer ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
                         <div className="relative">
                           {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className="w-full aspect-[2/3] object-cover" />
-                          ) : placeholder("aspect-[2/3]")}
+                            <img src={item.imageUrl} alt={item.name} className={`w-full ${aspect} object-cover`} />
+                          ) : placeholder(aspect)}
                           {badge}
                         </div>
                         <div className="p-3">
                           <h3 className="font-bold text-white text-sm leading-tight mb-2">{item.name}</h3>
                           <div className="flex items-center justify-between">
                             <span className="text-amber-400 font-extrabold text-base">{item.price.toFixed(0)} TL</span>
-                            {qty > 0 && !hasOpts ? (
-                              <div className="flex items-center gap-0 bg-neutral-800 rounded-full scale-90">
-                                <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" /></svg>
-                                </button>
-                                <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
-                                <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="bg-amber-500 active:scale-95 text-black font-bold text-xs px-3 py-1.5 rounded-full">
-                                Ekle
-                              </button>
-                            )}
+                            {addBtn("sm")}
                           </div>
                         </div>
                       </div>
                     );
                   }
 
-                  if (layout === "square") {
-                    return (
-                      <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                        <div className="relative">
-                          {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className="w-full aspect-square object-cover" />
-                          ) : placeholder("aspect-square")}
-                          {badge}
-                        </div>
-                        <div className="p-3">
-                          <h3 className="font-bold text-white text-sm leading-tight mb-2">{item.name}</h3>
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-400 font-extrabold text-base">{item.price.toFixed(0)} TL</span>
-                            {qty > 0 && !hasOpts ? (
-                              <div className="flex items-center gap-0 bg-neutral-800 rounded-full scale-90">
-                                <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" /></svg>
-                                </button>
-                                <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
-                                <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="bg-amber-500 active:scale-95 text-black font-bold text-xs px-3 py-1.5 rounded-full">
-                                Ekle
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Standard layout (Tost & Sandvic)
                   return (
-                    <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
+                    <div key={item.id} onClick={() => handleItemClick(item)} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all cursor-pointer ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
                       <div className="flex">
                         <div className="flex-1 p-4 flex flex-col justify-between min-h-[120px]">
                           <div>
@@ -426,7 +350,7 @@ export default function TableOrderPage() {
                           </div>
                           <div className="flex items-center justify-between mt-3">
                             <span className="text-amber-400 font-extrabold text-lg">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
-                            {qtyControl}
+                            {addBtn("md")}
                           </div>
                         </div>
                         <div className="w-[130px] shrink-0 relative overflow-hidden">
@@ -500,6 +424,9 @@ export default function TableOrderPage() {
                         <p className="text-amber-400/60 text-[11px] mt-0.5">
                           + {c.selectedExtras.map((id) => options.find((o) => o.id === id)?.optionName).filter(Boolean).join(", ")}
                         </p>
+                      )}
+                      {c.notes && (
+                        <p className="text-blue-400/60 text-[11px] mt-0.5 italic">📝 {c.notes}</p>
                       )}
                       <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-0 bg-neutral-700/50 rounded-full">

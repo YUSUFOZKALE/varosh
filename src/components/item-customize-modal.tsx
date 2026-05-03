@@ -29,6 +29,7 @@ export interface CustomizedItem {
   removedIngredients: string[];
   selectedExtras: number[];
   extrasCost: number;
+  notes: string;
 }
 
 interface Props {
@@ -42,11 +43,13 @@ export default function ItemCustomizeModal({ item, options, onClose, onAdd }: Pr
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [extras, setExtras] = useState<Set<number>>(new Set());
   const [qty, setQty] = useState(1);
+  const [notes, setNotes] = useState("");
 
   useEffect(() => {
     setRemoved(new Set());
     setExtras(new Set());
     setQty(1);
+    setNotes("");
   }, [item?.id]);
 
   if (!item) return null;
@@ -89,6 +92,7 @@ export default function ItemCustomizeModal({ item, options, onClose, onAdd }: Pr
       removedIngredients: Array.from(removed),
       selectedExtras: Array.from(extras),
       extrasCost,
+      notes: notes.trim(),
     });
     onClose();
   }
@@ -217,8 +221,23 @@ export default function ItemCustomizeModal({ item, options, onClose, onAdd }: Pr
                 </div>
               </div>
             )}
+
           </div>
         )}
+
+        {/* Urun Notu - her zaman gorunur */}
+        <div className="px-5 mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-base">📝</span>
+            <h3 className="text-sm font-bold text-white/70">Ozel Not</h3>
+          </div>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Ornek: Az pismis olsun, bol soslu..."
+            className="w-full bg-neutral-800/50 text-white rounded-xl px-3.5 py-3 text-sm border border-neutral-700/50 resize-none h-20 placeholder:text-white/20 focus:outline-none focus:border-amber-500/40"
+          />
+        </div>
 
         {/* Quantity + Add Button */}
         <div className="shrink-0 border-t border-neutral-800/80 p-5 bg-neutral-900">

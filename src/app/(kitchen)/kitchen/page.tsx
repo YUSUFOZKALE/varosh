@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-interface OrderItem { id: number; name: string; quantity: number; notes: string | null; }
+interface Extra { id: number; name: string; price: number }
+interface OrderItem { id: number; name: string; quantity: number; notes: string | null; extras: Extra[]; removed: string[]; }
 interface KitchenOrder {
   id: number;
   status: string;
@@ -123,6 +124,45 @@ export default function KitchenPage() {
     window.open(`/receipt/${orderId}`, "_blank", "width=400,height=700");
   }
 
+  const qtyColors: Record<string, string> = {
+    blue: "bg-blue-500/20 text-blue-300",
+    orange: "bg-orange-500/20 text-orange-300",
+    green: "bg-green-500/20 text-green-300",
+    purple: "bg-purple-500/20 text-purple-300",
+  };
+
+  function renderItemDetail(item: OrderItem, color: string) {
+    return (
+      <div key={item.id} className="flex items-start gap-2">
+        <span className={`${qtyColors[color] || qtyColors.blue} font-bold text-sm w-7 h-7 rounded-lg flex items-center justify-center shrink-0`}>
+          {item.quantity}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold">{item.name}</p>
+          {item.extras && item.extras.length > 0 && (
+            <div className="mt-0.5 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
+              {item.extras.map((ext, j) => (
+                <p key={j} className="text-xs font-bold text-amber-400">+ {ext.name}</p>
+              ))}
+            </div>
+          )}
+          {item.removed && item.removed.length > 0 && (
+            <div className="mt-0.5 bg-red-500/15 border border-red-500/40 rounded px-1.5 py-0.5">
+              {item.removed.map((r, j) => (
+                <p key={j} className="text-xs font-bold text-red-400">✕ {r}</p>
+              ))}
+            </div>
+          )}
+          {item.notes && (
+            <div className="mt-0.5 bg-yellow-500/10 border border-dashed border-yellow-500/30 rounded px-1.5 py-0.5">
+              <p className="text-xs font-bold text-yellow-400">📝 {item.notes}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const newOrders = orders.filter((o) => o.status === "new");
   const preparingOrders = orders.filter((o) => o.status === "preparing");
   const readyOrders = orders.filter((o) => o.status === "ready");
@@ -198,14 +238,8 @@ export default function KitchenPage() {
                             </span>
                           </div>
                           {full.items && full.items.length > 0 && (
-                            <div className="space-y-0.5">
-                              {full.items.map((item) => (
-                                <div key={item.id} className="flex items-center gap-1.5 text-xs">
-                                  <span className="text-purple-300 font-bold w-5 text-center">{item.quantity}x</span>
-                                  <span className="text-white/70">{item.name}</span>
-                                  {item.notes && <span className="text-yellow-400 ml-1">({item.notes})</span>}
-                                </div>
-                              ))}
+                            <div className="space-y-1.5">
+                              {full.items.map((item) => renderItemDetail(item, "purple"))}
                             </div>
                           )}
                           <p className="text-[10px] text-white/20 mt-1 truncate">{order.deliveryAddress}</p>
@@ -252,19 +286,11 @@ export default function KitchenPage() {
                   </div>
                   {order.customerName && <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>}
                   <div className="p-3 space-y-1.5">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2">
-                        <span className="bg-blue-500/20 text-blue-300 font-bold text-sm w-7 h-7 rounded-lg flex items-center justify-center shrink-0">{item.quantity}</span>
-                        <div>
-                          <p className="text-sm font-semibold">{item.name}</p>
-                          {item.notes && <p className="text-xs text-yellow-400 mt-0.5">{item.notes}</p>}
-                        </div>
-                      </div>
-                    ))}
+                    {order.items.map((item) => renderItemDetail(item, "blue"))}
                   </div>
                   {order.notes && (
                     <div className="px-3 pb-2">
-                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1">Not: {order.notes}</p>
+                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">📝 SIPARIS NOTU: {order.notes}</p>
                     </div>
                   )}
                   <div className="p-3 pt-0">
@@ -306,22 +332,12 @@ export default function KitchenPage() {
                   )}
 
                   <div className="p-3 space-y-1.5">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2">
-                        <span className="bg-blue-500/20 text-blue-300 font-bold text-sm w-7 h-7 rounded-lg flex items-center justify-center shrink-0">
-                          {item.quantity}
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold">{item.name}</p>
-                          {item.notes && <p className="text-xs text-yellow-400 mt-0.5">{item.notes}</p>}
-                        </div>
-                      </div>
-                    ))}
+                    {order.items.map((item) => renderItemDetail(item, "blue"))}
                   </div>
 
                   {order.notes && (
                     <div className="px-3 pb-2">
-                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1">Not: {order.notes}</p>
+                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">📝 SIPARIS NOTU: {order.notes}</p>
                     </div>
                   )}
 
@@ -380,18 +396,14 @@ export default function KitchenPage() {
                   </div>
 
                   <div className="p-3 space-y-1.5">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2">
-                        <span className="bg-orange-500/20 text-orange-300 font-bold text-sm w-7 h-7 rounded-lg flex items-center justify-center shrink-0">
-                          {item.quantity}
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold">{item.name}</p>
-                          {item.notes && <p className="text-xs text-yellow-400 mt-0.5">{item.notes}</p>}
-                        </div>
-                      </div>
-                    ))}
+                    {order.items.map((item) => renderItemDetail(item, "orange"))}
                   </div>
+
+                  {order.notes && (
+                    <div className="px-3 pb-2">
+                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">📝 SIPARIS NOTU: {order.notes}</p>
+                    </div>
+                  )}
 
                   <div className="p-3 pt-0">
                     <button
@@ -445,13 +457,8 @@ export default function KitchenPage() {
                     <p className="px-3 pt-1 text-xs text-white/40">{order.customerName} {order.customerPhone && `— ${order.customerPhone}`}</p>
                   )}
 
-                  <div className="p-3 space-y-1">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2">
-                        <span className="text-green-400 font-bold text-sm w-6 text-center">{item.quantity}x</span>
-                        <span className="text-sm">{item.name}</span>
-                      </div>
-                    ))}
+                  <div className="p-3 space-y-1.5">
+                    {order.items.map((item) => renderItemDetail(item, "green"))}
                   </div>
 
                   {order.deliveryAddress ? (
