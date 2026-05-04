@@ -29,5 +29,6 @@ export async function GET() {
     minOrderAmount: getMinOrderAmount(),
     estimatedDeliveryMinutes: getEstimatedDeliveryMinutes(),
     deliveryRadiusKm: getDeliveryRadiusKm(),
+    siteUrl: process.env.SITE_URL || "",
   });
 }

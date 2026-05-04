@@ -87,18 +87,26 @@ export default function SettingsPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
 
+  const siteUrlRef = useRef<string>("");
+
   async function generateQr(tableNumber: number): Promise<string> {
-    const url = `${window.location.origin}/table/${tableNumber}`;
+    const base = siteUrlRef.current || window.location.origin;
+    const url = `${base}/table/${tableNumber}`;
     return QRCode.toDataURL(url, {
       width: 300,
-      margin: 1,
-      color: { dark: "#F59E0B", light: "#1a1a1a" },
+      margin: 2,
+      color: { dark: "#000000", light: "#FFFFFF" },
     });
   }
 
   const loadTables = useCallback(async () => {
     setTablesLoading(true);
     try {
+      if (!siteUrlRef.current) {
+        const pubRes = await fetch("/api/settings/public");
+        const pubData = await pubRes.json();
+        if (pubData.siteUrl) siteUrlRef.current = pubData.siteUrl;
+      }
       const res = await fetch("/api/tables");
       const data: TableRow[] = await res.json();
       const active = data.filter((t) => t.isActive);
@@ -152,7 +160,7 @@ export default function SettingsPage() {
     const w = window.open("", "_blank", "width=400,height=500");
     if (!w) return;
     const bName = settings.business_name || "Isletme";
-    w.document.write(`<!DOCTYPE html><html><head><title>Masa ${tableNumber} QR</title><style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;font-family:system-ui}img{width:280px;height:280px;border-radius:16px}h1{font-size:48px;margin:20px 0 4px;color:#F59E0B}p{font-size:14px;opacity:.5;margin:0}@media print{body{background:#fff;color:#000}h1{color:#000}}</style></head><body><img src="${qrDataUrl}" /><h1>Masa ${tableNumber}</h1><p>${bName}</p><script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Masa ${tableNumber} QR</title><style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#fff;color:#000;font-family:system-ui}img{width:280px;height:280px}h1{font-size:48px;margin:20px 0 4px}p{font-size:14px;opacity:.5;margin:0}.sub{font-size:12px;opacity:.4;margin-top:8px}</style></head><body><img src="${qrDataUrl}" /><h1>Masa ${tableNumber}</h1><p>${bName}</p><p class="sub">QR okutarak siparis verin</p><script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
     w.document.close();
   }
 
@@ -165,7 +173,7 @@ export default function SettingsPage() {
       if (!qr) continue;
       cards += `<div class="card"><img src="${qr}" /><h2>Masa ${t.number}</h2><p>${settings.business_name || ""} - QR okutarak siparis ver</p></div>`;
     }
-    w.document.write(`<!DOCTYPE html><html><head><title>Tum Masa QR Kodlari</title><style>body{margin:0;padding:20px;background:#1a1a1a;color:#fff;font-family:system-ui}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px}.card{background:#262626;border-radius:16px;padding:16px;text-align:center}img{width:180px;height:180px;border-radius:12px}h2{font-size:24px;margin:10px 0 2px;color:#F59E0B}p{font-size:11px;opacity:.4;margin:0}@media print{body{background:#fff;color:#000}.card{background:#f5f5f5;break-inside:avoid}h2{color:#000}}</style></head><body><div class="grid">${cards}</div><script>setTimeout(()=>window.print(),500)<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Tum Masa QR Kodlari</title><style>body{margin:0;padding:20px;background:#fff;color:#000;font-family:system-ui}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px}.card{border:1px solid #ddd;border-radius:12px;padding:16px;text-align:center;break-inside:avoid}img{width:180px;height:180px}h2{font-size:24px;margin:10px 0 2px}p{font-size:11px;opacity:.4;margin:0}</style></head><body><div class="grid">${cards}</div><script>setTimeout(()=>window.print(),500)<\/script></body></html>`);
     w.document.close();
   }
 
@@ -239,18 +247,19 @@ export default function SettingsPage() {
     if (phone && phone.length >= 10) {
       QRCode.toDataURL(`https://wa.me/${phone}`, {
         width: 200,
-        margin: 1,
-        color: { dark: "#25D366", light: "#1a1a1a" },
+        margin: 2,
+        color: { dark: "#000000", light: "#FFFFFF" },
       }).then(setWpQr);
     } else {
       setWpQr(null);
     }
 
     if (typeof window !== "undefined") {
-      QRCode.toDataURL(`${window.location.origin}/siparis`, {
+      const base = siteUrlRef.current || window.location.origin;
+      QRCode.toDataURL(`${base}/siparis`, {
         width: 200,
-        margin: 1,
-        color: { dark: "#F59E0B", light: "#1a1a1a" },
+        margin: 2,
+        color: { dark: "#000000", light: "#FFFFFF" },
       }).then(setOrderQr);
     }
   }, [settings.business_phone]);
@@ -440,7 +449,9 @@ export default function SettingsPage() {
                     className="w-full"
                   >
                     {tableQrs[t.number] ? (
-                      <img src={tableQrs[t.number]} alt={`Masa ${t.number}`} className="w-full aspect-square rounded-lg mb-2 hover:opacity-80 transition-opacity" />
+                      <div className="bg-white rounded-lg p-1 mb-2">
+                        <img src={tableQrs[t.number]} alt={`Masa ${t.number}`} className="w-full aspect-square rounded hover:opacity-80 transition-opacity" />
+                      </div>
                     ) : (
                       <div className="w-full aspect-square rounded-lg bg-neutral-800 mb-2 flex items-center justify-center">
                         <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
@@ -481,8 +492,10 @@ export default function SettingsPage() {
           <h3 className="text-lg font-semibold mb-4">Siparis QR Kodu</h3>
           {orderQr ? (
             <div className="text-center space-y-3">
-              <img src={orderQr} alt="Siparis QR" className="rounded-xl w-[200px] h-[200px] mx-auto" />
-              <p className="text-xs text-amber-400 font-mono">{typeof window !== "undefined" ? window.location.origin : ""}/siparis</p>
+              <div className="bg-white rounded-xl p-2 inline-block mx-auto">
+                <img src={orderQr} alt="Siparis QR" className="rounded-lg w-[200px] h-[200px]" />
+              </div>
+              <p className="text-xs text-amber-400 font-mono">{siteUrlRef.current || (typeof window !== "undefined" ? window.location.origin : "")}/siparis</p>
               <p className="text-xs text-white/40">Musteri QR&apos;i okutunca kayit olur, menuden siparis verir, WhatsApp ile iletisime gecer.</p>
               <div className="flex gap-2 justify-center">
                 <Button size="sm" variant="secondary" onClick={() => {
@@ -492,7 +505,7 @@ export default function SettingsPage() {
                   link.click();
                 }}>QR Indir</Button>
                 <Button size="sm" variant="secondary" onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/siparis`);
+                  navigator.clipboard.writeText(`${siteUrlRef.current || window.location.origin}/siparis`);
                 }}>Link Kopyala</Button>
               </div>
             </div>
@@ -506,7 +519,9 @@ export default function SettingsPage() {
           <h3 className="text-lg font-semibold mb-4">WhatsApp Iletisim QR</h3>
           {wpQr ? (
             <div className="text-center space-y-3">
-              <img src={wpQr} alt="WhatsApp QR" className="rounded-xl w-[200px] h-[200px] mx-auto" />
+              <div className="bg-white rounded-xl p-2 inline-block mx-auto">
+                <img src={wpQr} alt="WhatsApp QR" className="rounded-lg w-[200px] h-[200px]" />
+              </div>
               <p className="text-xs text-green-400 font-mono">wa.me/{settings.business_phone?.replace(/\D/g, "").replace(/^0/, "90")}</p>
               <p className="text-xs text-white/40">Dogrudan WhatsApp sohbeti acar.</p>
               <div className="flex gap-2 justify-center">

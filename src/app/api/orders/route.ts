@@ -51,7 +51,43 @@ export async function GET(req: NextRequest) {
         .limit(limit)
         .all();
 
-  return NextResponse.json(orders);
+  const includeItems = sp.get("items") === "true";
+  if (!includeItems) return NextResponse.json(orders);
+
+  const orderIds = orders.map((o) => o.id);
+  if (orderIds.length === 0) return NextResponse.json([]);
+
+  const allItems = db.select().from(schema.orderItems)
+    .where(sql`${schema.orderItems.orderId} IN (${sql.join(orderIds.map((id) => sql`${id}`), sql`,`)})`)
+    .all();
+
+  const allOptions = db.select().from(schema.menuItemOptions).all();
+  const optMap = new Map(allOptions.map((o) => [o.id, o]));
+
+  const enrichedItems = allItems.map((item) => {
+    let extras: { id: number; name: string; price: number }[] = [];
+    let removed: string[] = [];
+    if (item.selectedOptions) {
+      try {
+        const ids: number[] = JSON.parse(item.selectedOptions);
+        extras = ids.map((id) => {
+          const opt = optMap.get(id);
+          return opt ? { id: opt.id, name: opt.optionName, price: opt.priceModifier } : { id, name: `#${id}`, price: 0 };
+        });
+      } catch {}
+    }
+    if (item.removedIngredients) {
+      try { removed = JSON.parse(item.removedIngredients); } catch {}
+    }
+    return { ...item, extras, removed };
+  });
+
+  const enriched = orders.map((o) => ({
+    ...o,
+    items: enrichedItems.filter((i) => i.orderId === o.id),
+  }));
+
+  return NextResponse.json(enriched);
 }
 
 export async function POST(req: NextRequest) {
@@ -86,8 +122,8 @@ export async function POST(req: NextRequest) {
     }
 
     const qty = item.quantity || 1;
-    const useDeliveryPrice = !tableNumber || source === "phone" || source === "whatsapp" || source === "yemeksepeti" || source === "getir";
-    let price = useDeliveryPrice ? (menuItem.deliveryPrice || menuItem.price) : menuItem.price;
+    const isDelivery = !!deliveryAddress || source === "yemeksepeti" || source === "getir";
+    let price = isDelivery ? (menuItem.deliveryPrice || menuItem.price) : menuItem.price;
 
     let extraCost = 0;
     if (item.selectedOptions && Array.isArray(item.selectedOptions)) {
@@ -116,6 +152,24 @@ export async function POST(req: NextRequest) {
   const deliveryFee = deliveryAddress ? getDeliveryFee() : 0;
   const total = subtotal + deliveryFee;
   const trackingToken = crypto.randomBytes(16).toString("hex");
+
+  if (tableNumber && !deliveryAddress) {
+    const openSession = db
+      .select()
+      .from(schema.tableSessions)
+      .where(
+        and(
+          eq(schema.tableSessions.tableNumber, tableNumber),
+          eq(schema.tableSessions.status, "open")
+        )
+      )
+      .get();
+    if (!openSession) {
+      db.insert(schema.tableSessions)
+        .values({ tableNumber, status: "open", total: 0 })
+        .run();
+    }
+  }
 
   const order = db.insert(schema.orders)
     .values({

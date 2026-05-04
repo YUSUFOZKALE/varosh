@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   response.cookies.set(AUTH_COOKIE_NAME, result.token, {
     httpOnly: true,
     sameSite: "lax",
-    maxAge: 86400,
+    maxAge: result.maxAge,
     path: "/",
   });
 

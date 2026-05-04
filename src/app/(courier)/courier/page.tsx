@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 
 interface CourierDelivery {
   id: number;
@@ -37,27 +38,50 @@ interface OrderDetail {
 }
 
 export default function CourierPage() {
+  const router = useRouter();
   const [deliveries, setDeliveries] = useState<CourierDelivery[]>([]);
   const [shopLocation, setShopLocation] = useState<[number, number]>(SHOP_DEFAULT);
   const [paymentModal, setPaymentModal] = useState<CourierDelivery | null>(null);
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null);
   const [paying, setPaying] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
+  const [pendingPackages, setPendingPackages] = useState<CourierDelivery[]>([]);
+  const [pickSelected, setPickSelected] = useState<Set<number>>(new Set());
+  const [picking, setPicking] = useState(false);
+  const [myStaffId, setMyStaffId] = useState<number | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const scannerRef = useRef<any>(null);
+  const autoStarted = useRef(false);
 
   const load = useCallback(async () => {
-    const [res, settingsRes] = await Promise.all([
+    const [res, settingsRes, readyRes, meRes] = await Promise.all([
       fetch("/api/orders?status=on_the_way"),
       fetch("/api/settings/public"),
+      fetch("/api/orders?status=ready"),
+      fetch("/api/auth/me"),
     ]);
     if (res.ok) {
       const orders: CourierDelivery[] = await res.json();
       setDeliveries(orders.filter((o) => o.deliveryAddress));
     }
+    if (readyRes.ok) {
+      const readyOrders: CourierDelivery[] = await readyRes.json();
+      setPendingPackages(readyOrders.filter((o) => o.deliveryAddress));
+    }
+    try {
+      const me = await meRes.json();
+      if (me.staffId) setMyStaffId(me.staffId);
+    } catch {}
     try {
       const s = await settingsRes.json();
       if (s.shopLatitude && s.shopLongitude) {
         setShopLocation([s.shopLatitude, s.shopLongitude]);
       }
     } catch {}
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -65,6 +89,50 @@ export default function CourierPage() {
     const interval = setInterval(load, 8000);
     return () => clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    if (loaded && !autoStarted.current && deliveries.length === 0) {
+      autoStarted.current = true;
+      startScanner();
+    }
+  }, [loaded]);
+
+  async function startScanner() {
+    setScanning(true);
+    setScanError("");
+
+    try {
+      const { Html5Qrcode } = await import("html5-qrcode");
+      const scanner = new Html5Qrcode("qr-reader");
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          const match = decodedText.match(/\/courier\/batch\/([a-z0-9]+)/i);
+          if (match) {
+            stopScanner();
+            router.push(`/courier/batch/${match[1]}`);
+          } else {
+            setScanError("Gecersiz QR kod");
+          }
+        },
+        () => {}
+      );
+    } catch (err: any) {
+      setScanError("Kamera acilamadi: " + (err?.message || "Izin verin"));
+    }
+  }
+
+  function stopScanner() {
+    if (scannerRef.current) {
+      scannerRef.current.stop().catch(() => {});
+      scannerRef.current = null;
+    }
+    setScanning(false);
+    setScanError("");
+  }
 
   async function openPayment(d: CourierDelivery) {
     setPaymentModal(d);
@@ -83,6 +151,63 @@ export default function CourierPage() {
     setPaymentModal(null);
     setOrderDetail(null);
     load();
+  }
+
+  function toggleBulk(id: number) {
+    setBulkSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function bulkDeliver(paymentMethod: "cash" | "card") {
+    if (bulkSelected.size === 0) return;
+    setPaying(true);
+    await fetch("/api/orders/bulk-deliver", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: Array.from(bulkSelected), paymentMethod }),
+    });
+    setPaying(false);
+    setBulkSelected(new Set());
+    setBulkMode(false);
+    load();
+  }
+
+  function togglePick(id: number) {
+    setPickSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function assignAndRoute() {
+    if (pickSelected.size === 0 || !myStaffId) return;
+    setPicking(true);
+    const ids = Array.from(pickSelected);
+    for (const orderId of ids) {
+      await fetch("/api/delivery/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, courierId: myStaffId }),
+      });
+    }
+    const batchRes = await fetch("/api/delivery/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: ids, courierId: myStaffId, baseUrl: window.location.origin }),
+    });
+    if (batchRes.ok) {
+      const { token } = await batchRes.json();
+      setPickSelected(new Set());
+      setPicking(false);
+      router.push(`/courier/batch/${token}`);
+    } else {
+      setPicking(false);
+      load();
+    }
   }
 
   function getElapsed(createdAt: string) {
@@ -123,10 +248,132 @@ export default function CourierPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="text-center mb-4">
-        <h1 className="text-xl font-bold">Teslimatlarim</h1>
-        <p className="text-white/40 text-sm">{deliveries.length} aktif teslimat</p>
+      {/* QR Scanner - inline at top */}
+      <div className="rounded-2xl overflow-hidden border border-border bg-black">
+        {scanning ? (
+          <>
+            <div id="qr-reader" className="w-full" />
+            {scanError && (
+              <div className="bg-red-600/90 text-white text-center py-2 text-xs font-medium">{scanError}</div>
+            )}
+            <button onClick={stopScanner} className="w-full py-2.5 bg-neutral-800 text-white/40 text-xs font-medium">Kamerayi Kapat</button>
+          </>
+        ) : (
+          <button
+            onClick={startScanner}
+            className="w-full py-5 flex flex-col items-center gap-1.5 bg-purple-600/10 active:bg-purple-600/20 transition-all"
+          >
+            <svg className="w-7 h-7 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            </svg>
+            <span className="text-purple-400 font-bold text-sm">QR Kod Okut</span>
+            <span className="text-white/20 text-xs">Kamerayi ac</span>
+          </button>
+        )}
       </div>
+
+      {/* Pending packages - selectable list */}
+      {pendingPackages.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-orange-400 font-bold text-sm">{pendingPackages.length} paket hazir</p>
+                <p className="text-white/30 text-[11px]">Sec ve rotani olustur</p>
+              </div>
+            </div>
+            {pickSelected.size > 0 && (
+              <span className="bg-orange-500 text-black font-bold text-xs px-2.5 py-1 rounded-full">{pickSelected.size} secili</span>
+            )}
+          </div>
+
+          {pendingPackages.map((p) => {
+            const selected = pickSelected.has(p.id);
+            return (
+              <div
+                key={p.id}
+                onClick={() => togglePick(p.id)}
+                className={`rounded-xl p-3 border transition-all active:scale-[0.98] cursor-pointer ${
+                  selected ? "bg-orange-500/15 border-orange-500/50" : "bg-surface-1 border-border"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
+                    selected ? "bg-orange-500 border-orange-500" : "border-white/20"
+                  }`}>
+                    {selected && (
+                      <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm">#{p.id} {p.customerName || "Isimsiz"}</span>
+                      <span className="text-orange-400 font-bold text-sm">{p.total.toFixed(0)} TL</span>
+                    </div>
+                    <p className="text-white/40 text-xs truncate mt-0.5">{p.deliveryAddress}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {pickSelected.size > 0 && (
+            <button
+              onClick={assignAndRoute}
+              disabled={picking}
+              className="w-full py-4 rounded-2xl bg-orange-500 hover:bg-orange-400 text-black font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+            >
+              {picking ? "Ataniyor..." : `Rota Olustur (${pickSelected.size} paket)`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Header + Bulk toggle */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold">Teslimatlarim</h1>
+          <p className="text-white/40 text-xs">{deliveries.length} aktif teslimat</p>
+        </div>
+        {deliveries.length > 0 && (
+          <button
+            onClick={() => { setBulkMode(!bulkMode); setBulkSelected(new Set()); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.97] ${bulkMode ? "bg-amber-500 text-black" : "bg-surface-2 text-white/50"}`}
+          >
+            {bulkMode ? "Toplu Aktif" : "Toplu Teslim"}
+          </button>
+        )}
+      </div>
+
+      {/* Bulk action bar */}
+      {bulkMode && bulkSelected.size > 0 && (
+        <div className="sticky top-0 z-40 bg-neutral-900/95 backdrop-blur-sm rounded-2xl p-4 border border-amber-500/30 space-y-3">
+          <p className="text-center text-white font-semibold">{bulkSelected.size} siparis secildi &middot; {deliveries.filter((d) => bulkSelected.has(d.id)).reduce((s, d) => s + d.total, 0).toFixed(0)} TL</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => bulkDeliver("cash")}
+              disabled={paying}
+              className="py-4 rounded-2xl bg-green-600 hover:bg-green-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+            >
+              Toplu Nakit
+            </button>
+            <button
+              onClick={() => bulkDeliver("card")}
+              disabled={paying}
+              className="py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+            >
+              Toplu Kart
+            </button>
+          </div>
+        </div>
+      )}
 
       {locatedCount > 1 && (
         <button
@@ -138,11 +385,14 @@ export default function CourierPage() {
       )}
 
       {deliveries.map((d) => (
-        <div key={d.id} className="bg-surface-1 rounded-2xl p-4 border border-border">
+        <div key={d.id} className={`bg-surface-1 rounded-2xl p-4 border transition-all ${bulkMode && bulkSelected.has(d.id) ? "border-amber-500/50" : "border-border"}`} onClick={bulkMode ? () => toggleBulk(d.id) : undefined}>
           <div className="flex justify-between items-start mb-3">
-            <div>
+            <div className="flex items-center gap-2">
+              {bulkMode && (
+                <input type="checkbox" checked={bulkSelected.has(d.id)} onChange={() => toggleBulk(d.id)} className="accent-amber-500 w-5 h-5" onClick={(e) => e.stopPropagation()} />
+              )}
               <span className="font-bold text-lg">#{d.id}</span>
-              <span className="ml-2 text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">YOLDA</span>
+              <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">YOLDA</span>
             </div>
             <span className="text-white/40 text-sm">{getElapsed(d.createdAt)}dk</span>
           </div>
@@ -169,33 +419,35 @@ export default function CourierPage() {
             <span className="text-xl font-bold text-accent">{d.total.toFixed(0)} TL</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            {d.deliveryLatitude && d.deliveryLongitude && (
+          {!bulkMode && (
+            <div className="grid grid-cols-3 gap-2">
+              {d.deliveryLatitude && d.deliveryLongitude && (
+                <button
+                  onClick={() => openSingleNav(d)}
+                  className="py-3 rounded-xl bg-amber-600 text-white font-bold text-sm text-center transition-all active:scale-[0.97]"
+                >
+                  YOL TARiFi
+                </button>
+              )}
+              {d.customerPhone && (
+                <a
+                  href={`tel:${d.customerPhone}`}
+                  className="py-3 rounded-xl bg-blue-600 text-white font-bold text-sm text-center"
+                >
+                  ARA
+                </a>
+              )}
               <button
-                onClick={() => openSingleNav(d)}
-                className="py-3 rounded-xl bg-amber-600 text-white font-bold text-sm text-center transition-all active:scale-[0.97]"
+                onClick={() => openPayment(d)}
+                className={`py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-all active:scale-[0.97] ${
+                  !d.deliveryLatitude && !d.customerPhone ? "col-span-3" :
+                  !d.deliveryLatitude || !d.customerPhone ? "col-span-2" : ""
+                }`}
               >
-                YOL TARiFi
+                TESLiM
               </button>
-            )}
-            {d.customerPhone && (
-              <a
-                href={`tel:${d.customerPhone}`}
-                className="py-3 rounded-xl bg-blue-600 text-white font-bold text-sm text-center"
-              >
-                ARA
-              </a>
-            )}
-            <button
-              onClick={() => openPayment(d)}
-              className={`py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-all active:scale-[0.97] ${
-                !d.deliveryLatitude && !d.customerPhone ? "col-span-3" :
-                !d.deliveryLatitude || !d.customerPhone ? "col-span-2" : ""
-              }`}
-            >
-              TESLiM
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       ))}
 

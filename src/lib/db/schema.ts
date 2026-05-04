@@ -72,7 +72,7 @@ export const staff = sqliteTable("staff", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   phone: text("phone").notNull().unique(),
   name: text("name").notNull(),
-  role: text("role", { enum: ["owner", "cashier", "cook", "courier"] }).notNull(),
+  role: text("role", { enum: ["owner", "cashier", "cook", "courier", "waiter"] }).notNull(),
   pin: text("pin"),
   permissions: text("permissions"),
   isActive: integer("is_active", { mode: "boolean" }).default(true).notNull(),
@@ -179,6 +179,7 @@ export const orders = sqliteTable("orders", {
   mergedWithOrderId: integer("merged_with_order_id"),
   splitFromOrderId: integer("split_from_order_id"),
   mergedIntoOrderId: integer("merged_into_order_id"),
+  batchId: integer("batch_id"),
   createdAt: text("created_at")
     .default(sql`(datetime('now','localtime'))`)
     .notNull(),
@@ -680,6 +681,23 @@ export const tables = sqliteTable("tables", {
   createdAt: text("created_at")
     .default(sql`(datetime('now','localtime'))`)
     .notNull(),
+});
+
+// ============================================================
+// MASA HESAPLARI (Table Sessions)
+// ============================================================
+
+export const tableSessions = sqliteTable("table_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  tableNumber: integer("table_number").notNull(),
+  status: text("status", { enum: ["open", "closed"] })
+    .default("open")
+    .notNull(),
+  total: real("total").default(0).notNull(),
+  openedAt: text("opened_at")
+    .default(sql`(datetime('now','localtime'))`)
+    .notNull(),
+  closedAt: text("closed_at"),
 });
 
 // ============================================================

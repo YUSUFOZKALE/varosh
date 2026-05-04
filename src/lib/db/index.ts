@@ -13,6 +13,12 @@ export function getDb() {
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("foreign_keys = ON");
     sqlite.pragma("busy_timeout = 5000");
+
+    const cols = sqlite.prepare("PRAGMA table_info(orders)").all() as { name: string }[];
+    if (!cols.find((c) => c.name === "batch_id")) {
+      sqlite.exec("ALTER TABLE orders ADD COLUMN batch_id INTEGER");
+    }
+
     db = drizzle(sqlite, { schema });
   }
   return db;

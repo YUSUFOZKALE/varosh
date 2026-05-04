@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
   }
 
   const db = getDb();
+  const maxSort = db.select({ max: sql`MAX(${schema.menuItems.sortOrder})` }).from(schema.menuItems).where(eq(schema.menuItems.categoryId, categoryId)).get();
+  const nextSort = ((maxSort?.max as number) || 0) + 1;
   const result = db.insert(schema.menuItems)
     .values({
       name: name.trim(),
@@ -38,10 +40,25 @@ export async function POST(req: NextRequest) {
       description: description?.trim() || null,
       prepTimeMinutes,
       isAvailable,
-      sortOrder: 0,
+      sortOrder: nextSort,
     })
     .returning()
     .get();
 
   return NextResponse.json(result, { status: 201 });
+}
+
+export async function PATCH(req: NextRequest) {
+  const { items } = await req.json();
+  if (!Array.isArray(items)) {
+    return NextResponse.json({ error: "items dizisi gerekli" }, { status: 400 });
+  }
+  const db = getDb();
+  for (const { id, sortOrder } of items) {
+    db.update(schema.menuItems)
+      .set({ sortOrder })
+      .where(eq(schema.menuItems.id, id))
+      .run();
+  }
+  return NextResponse.json({ ok: true });
 }

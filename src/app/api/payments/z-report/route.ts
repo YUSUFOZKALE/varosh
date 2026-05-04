@@ -19,6 +19,13 @@ export async function GET(req: NextRequest) {
     .where(sql`date(${schema.orders.createdAt}) = ${date}`)
     .get();
 
+  const collectedStats = db.select({
+    totalCollected: sql<number>`COALESCE(SUM(${schema.payments.amount}), 0)`,
+  })
+    .from(schema.payments)
+    .where(sql`date(${schema.payments.createdAt}) = ${date}`)
+    .get();
+
   const paymentBreakdown = db.select({
     method: schema.payments.method,
     total: sql<number>`COALESCE(SUM(${schema.payments.amount}), 0)`,
@@ -50,7 +57,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     date,
-    orders: orderStats,
+    orders: { ...orderStats, totalCollected: collectedStats?.totalCollected || 0 },
     paymentBreakdown,
     cashMovements,
     sourceBreakdown,

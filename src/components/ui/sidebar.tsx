@@ -51,7 +51,7 @@ export function Sidebar() {
       {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-surface border-b border-border flex items-center justify-between px-4 h-14">
         <button onClick={() => setOpen(!open)} className="text-white/60 text-2xl">☰</button>
-        {ps.headerLogoUrl ? <img src={ps.headerLogoUrl} alt={ps.businessName} className="h-7 object-contain" /> : <span className="font-bold text-amber-400">{ps.businessName}</span>}
+        <img src="/images/varosh-full.png" alt="Varosh" className="h-7 object-contain" />
         <div className="w-8" />
       </div>
 
@@ -65,7 +65,7 @@ export function Sidebar() {
         open ? "translate-x-0" : "-translate-x-full"
       }`}>
         <div className="p-5 border-b border-border">
-          {ps.headerLogoUrl ? <img src={ps.headerLogoUrl} alt={ps.businessName} className="h-7 object-contain" /> : <span className="font-bold text-amber-400">{ps.businessName}</span>}
+          <img src="/images/varosh-full.png" alt="Varosh" className="h-8 object-contain" />
           <p className="text-[10px] text-white/30 mt-1">POS Sistemi</p>
         </div>
 

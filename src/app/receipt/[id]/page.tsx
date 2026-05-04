@@ -29,6 +29,7 @@ interface Order {
   trackingToken: string | null;
   createdAt: string;
   items: OrderItem[];
+  batchLabel: string | null;
 }
 
 export default function ReceiptPage() {
@@ -99,6 +100,15 @@ export default function ReceiptPage() {
         </div>
 
         <div className="border-t-2 border-black my-2" />
+
+        {/* Batch label */}
+        {order.batchLabel && (
+          <div className="text-center mb-1">
+            <div className="inline-block bg-black text-white px-4 py-1.5">
+              <span className="text-xl font-black tracking-wider">KUME {order.batchLabel}</span>
+            </div>
+          </div>
+        )}
 
         {/* Order info - buyuk ve belirgin */}
         <div className="text-center mb-1">

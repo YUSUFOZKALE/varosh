@@ -35,6 +35,14 @@ function verify(token: string): SessionPayload | null {
   }
 }
 
+const SESSION_DURATIONS: Record<string, number> = {
+  courier: 30 * 24 * 60 * 60 * 1000,
+  waiter: 30 * 24 * 60 * 60 * 1000,
+  cashier: 30 * 24 * 60 * 60 * 1000,
+  cook: 30 * 24 * 60 * 60 * 1000,
+  owner: 24 * 60 * 60 * 1000,
+};
+
 export function loginWithPin(pin: string) {
   const db = getDb();
   const staffMember = db.select()
@@ -44,14 +52,16 @@ export function loginWithPin(pin: string) {
 
   if (!staffMember) return null;
 
+  const duration = SESSION_DURATIONS[staffMember.role] || 24 * 60 * 60 * 1000;
+
   const payload: SessionPayload = {
     staffId: staffMember.id,
     name: staffMember.name,
     role: staffMember.role,
-    exp: Date.now() + 24 * 60 * 60 * 1000,
+    exp: Date.now() + duration,
   };
 
-  return { token: sign(payload), staff: payload };
+  return { token: sign(payload), staff: payload, maxAge: Math.floor(duration / 1000) };
 }
 
 export function getSession(): SessionPayload | null {

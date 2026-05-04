@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +39,13 @@ export async function POST(req: NextRequest) {
     .values({ type: "sale", amount, orderId, description: `Siparis #${orderId} - ${method}` })
     .run();
 
+  if (amount < order.total) {
+    db.update(schema.orders)
+      .set({ discountAmount: order.total - amount })
+      .where(eq(schema.orders.id, orderId))
+      .run();
+  }
+
   db.update(schema.orders)
     .set({
       paymentMethod: method,
@@ -46,6 +53,43 @@ export async function POST(req: NextRequest) {
     })
     .where(eq(schema.orders.id, orderId))
     .run();
+
+  if (order.tableNumber) {
+    const openSession = db
+      .select()
+      .from(schema.tableSessions)
+      .where(
+        and(
+          eq(schema.tableSessions.tableNumber, order.tableNumber),
+          eq(schema.tableSessions.status, "open")
+        )
+      )
+      .get();
+
+    if (openSession) {
+      const remainingUnpaid = db
+        .select()
+        .from(schema.orders)
+        .where(
+          sql`${schema.orders.tableNumber} = ${order.tableNumber}
+            AND ${schema.orders.paymentMethod} IS NULL
+            AND ${schema.orders.status} != 'cancelled'
+            AND ${schema.orders.id} != ${orderId}
+            AND ${schema.orders.createdAt} >= ${openSession.openedAt}`
+        )
+        .all();
+
+      if (remainingUnpaid.length === 0) {
+        db.update(schema.tableSessions)
+          .set({
+            status: "closed" as const,
+            closedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
+          })
+          .where(eq(schema.tableSessions.id, openSession.id))
+          .run();
+      }
+    }
+  }
 
   return NextResponse.json(payment, { status: 201 });
 }

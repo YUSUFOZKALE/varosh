@@ -22,6 +22,7 @@ const ROLE_LABELS: Record<string, string> = {
   cashier: "Kasiyer",
   cook: "Asci",
   courier: "Kurye",
+  waiter: "Garson",
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -29,6 +30,7 @@ const ROLE_COLORS: Record<string, string> = {
   cashier: "bg-blue-600/20 text-blue-400",
   cook: "bg-orange-600/20 text-orange-400",
   courier: "bg-green-600/20 text-green-400",
+  waiter: "bg-amber-600/20 text-amber-400",
 };
 
 export default function StaffPage() {
@@ -172,6 +174,7 @@ export default function StaffPage() {
                 <option value="cashier">Kasiyer</option>
                 <option value="cook">Asci</option>
                 <option value="courier">Kurye</option>
+                <option value="waiter">Garson</option>
               </select>
             </div>
           </div>

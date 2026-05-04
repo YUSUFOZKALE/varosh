@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
 
+
 const VALID_TRANSITIONS: Record<string, string[]> = {
   new: ["preparing", "cancelled"],
   pending_approval: ["new", "cancelled"],
@@ -25,9 +26,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-  const updates: Record<string, string | null> = { status };
+  const updates: Record<string, string | number | null> = { status };
 
-  if (status === "preparing") updates.preparedAt = null;
+  if (status === "preparing") {
+    updates.preparedAt = null;
+    if (!order.batchId) {
+      const maxBatch = db.select({ max: sql<number>`COALESCE(MAX(${schema.orders.batchId}), 0)` }).from(schema.orders).get();
+      updates.batchId = (maxBatch?.max || 0) + 1;
+    }
+  }
   if (status === "ready") updates.preparedAt = now;
   if (status === "on_the_way") updates.pickedUpAt = now;
   if (status === "delivered") updates.deliveredAt = now;
@@ -61,14 +68,16 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         })
         .run();
 
-      db.insert(schema.cashRegister)
-        .values({
-          type: "sale",
-          amount: order.total,
-          orderId: id,
-          description: `Siparis #${id} - ${paymentMethod} (kurye teslim)`,
-        })
-        .run();
+      if (!order.staffCourierId) {
+        db.insert(schema.cashRegister)
+          .values({
+            type: "sale",
+            amount: order.total,
+            orderId: id,
+            description: `Siparis #${id} - ${paymentMethod} (kurye teslim)`,
+          })
+          .run();
+      }
 
       db.update(schema.orders)
         .set({

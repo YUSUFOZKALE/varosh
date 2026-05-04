@@ -14,6 +14,7 @@ interface KitchenOrder {
   source: string;
   notes: string | null;
   total: number;
+  batchId: number | null;
   createdAt: string;
   items: OrderItem[];
 }
@@ -125,6 +126,26 @@ export default function KitchenPage() {
     load();
   }
 
+  async function acceptTableCluster(orderIds: number[]) {
+    setAcceptingCluster("table");
+    await fetch("/api/delivery/smart-queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds }),
+    });
+    const printWin = window.open(`/receipt/${orderIds[0]}`, "batch_print", "width=400,height=700");
+    for (let i = 1; i < orderIds.length; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      if (printWin && !printWin.closed) {
+        printWin.location.href = `/receipt/${orderIds[i]}`;
+      } else {
+        window.open(`/receipt/${orderIds[i]}`, "batch_print", "width=400,height=700");
+      }
+    }
+    setAcceptingCluster(null);
+    load();
+  }
+
   function getElapsed(createdAt: string) {
     return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
   }
@@ -138,6 +159,7 @@ export default function KitchenPage() {
     orange: "bg-orange-500/20 text-orange-300",
     green: "bg-green-500/20 text-green-300",
     purple: "bg-purple-500/20 text-purple-300",
+    amber: "bg-amber-500/20 text-amber-300",
   };
 
   function renderItemDetail(item: OrderItem, color: string) {
@@ -164,12 +186,19 @@ export default function KitchenPage() {
           )}
           {item.notes && (
             <div className="mt-0.5 bg-yellow-500/10 border border-dashed border-yellow-500/30 rounded px-1.5 py-0.5">
-              <p className="text-xs font-bold text-yellow-400">📝 {item.notes}</p>
+              <p className="text-xs font-bold text-yellow-400">{item.notes}</p>
             </div>
           )}
         </div>
       </div>
     );
+  }
+
+  function getBatchLabel(order: KitchenOrder) {
+    if (!order.batchId) return null;
+    const sameB = orders.filter((o) => o.batchId === order.batchId).sort((a, b) => a.id - b.id);
+    const idx = sameB.findIndex((o) => o.id === order.id) + 1;
+    return `${sameB.length}/${idx}`;
   }
 
   const newOrders = orders.filter((o) => o.status === "new");
@@ -299,7 +328,7 @@ export default function KitchenPage() {
                   </div>
                   {order.notes && (
                     <div className="px-3 pb-2">
-                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">📝 SIPARIS NOTU: {order.notes}</p>
+                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">SIPARIS NOTU: {order.notes}</p>
                     </div>
                   )}
                   <div className="p-3 pt-0">
@@ -314,53 +343,97 @@ export default function KitchenPage() {
               );
             })}
 
-            {/* Table / in-store orders — individual cards */}
-            {newTableOrders.map((order) => {
-              const elapsed = getElapsed(order.createdAt);
-              const isUrgent = elapsed > 10;
-              return (
-                <div
-                  key={order.id}
-                  className={`bg-surface-1 rounded-xl border-l-4 border-blue-500 overflow-hidden ${
-                    isUrgent ? "ring-2 ring-red-500/50 animate-pulse" : ""
-                  }`}
-                >
-                  <div className="flex items-center justify-between px-3 py-2 bg-blue-500/5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-lg">#{order.id}</span>
-                      {order.source === "whatsapp" && <span className="text-[10px] bg-green-600/20 text-green-400 px-1.5 py-0.5 rounded">WA</span>}
-                      {order.tableNumber && <span className="text-xs text-white/40">Masa {order.tableNumber}</span>}
-                    </div>
-                    <span className={`text-sm font-mono ${isUrgent ? "text-red-400 font-bold" : "text-white/40"}`}>
-                      {elapsed}dk
+            {/* Table / in-store orders — grouped as cluster */}
+            {newTableOrders.length > 1 ? (
+              <div className="bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🪑</span>
+                    <span className="font-bold text-sm">Masa Siparisleri</span>
+                    <span className="text-[10px] bg-amber-600/20 text-amber-400 px-1.5 py-0.5 rounded">
+                      {newTableOrders.length} Siparis
                     </span>
                   </div>
-
-                  {order.customerName && (
-                    <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>
-                  )}
-
-                  <div className="p-3 space-y-1.5">
-                    {order.items.map((item) => renderItemDetail(item, "blue"))}
-                  </div>
-
-                  {order.notes && (
-                    <div className="px-3 pb-2">
-                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">📝 SIPARIS NOTU: {order.notes}</p>
-                    </div>
-                  )}
-
-                  <div className="p-3 pt-0">
-                    <button
-                      onClick={() => updateStatus(order.id, "preparing")}
-                      className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-base transition-all active:scale-[0.97]"
-                    >
-                      KABUL ET — HAZIRLA
-                    </button>
-                  </div>
                 </div>
-              );
-            })}
+                <div className="p-3 space-y-2">
+                  {newTableOrders.map((order) => {
+                    const elapsed = getElapsed(order.createdAt);
+                    return (
+                      <div key={order.id} className="bg-surface-2 rounded-lg p-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm">#{order.id}</span>
+                            {order.tableNumber && <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded">Masa {order.tableNumber}</span>}
+                            {order.source === "qr" && <span className="text-[10px] bg-blue-600/20 text-blue-400 px-1 py-0.5 rounded">QR</span>}
+                          </div>
+                          <span className={`text-xs font-mono ${elapsed > 10 ? "text-red-400 font-bold" : "text-white/40"}`}>{elapsed}dk</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {order.items.map((item) => renderItemDetail(item, "amber"))}
+                        </div>
+                        {order.notes && (
+                          <div className="mt-1.5">
+                            <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded px-1.5 py-0.5 font-bold">SIPARIS NOTU: {order.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="p-3 pt-0">
+                  <button
+                    onClick={() => acceptTableCluster(newTableOrders.map((o) => o.id))}
+                    disabled={acceptingCluster === "table"}
+                    className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-base transition-all active:scale-[0.97]"
+                  >
+                    {acceptingCluster === "table"
+                      ? "Kabul ediliyor..."
+                      : `KUMEYI KABUL ET (${newTableOrders.length} Masa)`}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              newTableOrders.map((order) => {
+                const elapsed = getElapsed(order.createdAt);
+                const isUrgent = elapsed > 10;
+                return (
+                  <div
+                    key={order.id}
+                    className={`bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden ${
+                      isUrgent ? "ring-2 ring-red-500/50 animate-pulse" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-lg">#{order.id}</span>
+                        {order.tableNumber && <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-1.5 py-0.5 rounded">Masa {order.tableNumber}</span>}
+                        {order.source === "qr" && <span className="text-[10px] bg-blue-600/20 text-blue-400 px-1 py-0.5 rounded">QR</span>}
+                      </div>
+                      <span className={`text-sm font-mono ${isUrgent ? "text-red-400 font-bold" : "text-white/40"}`}>
+                        {elapsed}dk
+                      </span>
+                    </div>
+                    {order.customerName && <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>}
+                    <div className="p-3 space-y-1.5">
+                      {order.items.map((item) => renderItemDetail(item, "amber"))}
+                    </div>
+                    {order.notes && (
+                      <div className="px-3 pb-2">
+                        <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">SIPARIS NOTU: {order.notes}</p>
+                      </div>
+                    )}
+                    <div className="p-3 pt-0">
+                      <button
+                        onClick={() => updateStatus(order.id, "preparing")}
+                        className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-base transition-all active:scale-[0.97]"
+                      >
+                        KABUL ET — HAZIRLA
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
 
             {newOrders.length === 0 && clusters.length === 0 && (
               <div className="text-center py-8 text-white/20 text-sm">Yeni siparis yok</div>
@@ -377,6 +450,7 @@ export default function KitchenPage() {
             {preparingOrders.map((order) => {
               const elapsed = getElapsed(order.createdAt);
               const isUrgent = elapsed > 20;
+              const bl = getBatchLabel(order);
               return (
                 <div
                   key={order.id}
@@ -387,7 +461,8 @@ export default function KitchenPage() {
                   <div className="flex items-center justify-between px-3 py-2 bg-orange-500/5">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-lg">#{order.id}</span>
-                      {order.tableNumber && <span className="text-xs text-white/40">Masa {order.tableNumber}</span>}
+                      {bl && <span className="text-[10px] bg-white/10 text-white/60 font-bold px-1.5 py-0.5 rounded">Kume {bl}</span>}
+                      {order.tableNumber && <span className="text-xs text-amber-400 font-bold">Masa {order.tableNumber}</span>}
                       {order.deliveryAddress && <span className="text-xs text-purple-400">Paket</span>}
                     </div>
                     <div className="flex items-center gap-2">
@@ -410,7 +485,7 @@ export default function KitchenPage() {
 
                   {order.notes && (
                     <div className="px-3 pb-2">
-                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">📝 SIPARIS NOTU: {order.notes}</p>
+                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">SIPARIS NOTU: {order.notes}</p>
                     </div>
                   )}
 
@@ -439,6 +514,7 @@ export default function KitchenPage() {
           <div className="space-y-3">
             {readyOrders.map((order) => {
               const elapsed = getElapsed(order.createdAt);
+              const bl = getBatchLabel(order);
               return (
                 <div
                   key={order.id}
@@ -447,7 +523,8 @@ export default function KitchenPage() {
                   <div className="flex items-center justify-between px-3 py-2 bg-green-500/5">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-lg">#{order.id}</span>
-                      {order.tableNumber && <span className="text-xs text-white/40">Masa {order.tableNumber}</span>}
+                      {bl && <span className="text-[10px] bg-white/10 text-white/60 font-bold px-1.5 py-0.5 rounded">Kume {bl}</span>}
+                      {order.tableNumber && <span className="text-xs text-amber-400 font-bold">Masa {order.tableNumber}</span>}
                       {order.deliveryAddress && <span className="text-xs text-purple-400">Paket</span>}
                     </div>
                     <div className="flex items-center gap-2">

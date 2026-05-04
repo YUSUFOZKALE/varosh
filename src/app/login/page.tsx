@@ -25,7 +25,11 @@ export default function LoginPage() {
     });
 
     if (res.ok) {
-      router.push("/");
+      const data = await res.json();
+      if (data.role === "courier") router.push("/courier");
+      else if (data.role === "cook") router.push("/kitchen");
+      else if (data.role === "waiter") router.push("/waiter");
+      else router.push("/");
       router.refresh();
     } else {
       const data = await res.json();
@@ -45,7 +49,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-surface flex items-center justify-center">
       <div className="w-full max-w-xs">
         <div className="text-center mb-8">
-          {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-16 mx-auto object-contain" /> : <h1 className="text-2xl font-bold text-amber-400">{ps.businessName}</h1>}
+          <img src="/images/varosh-full.png" alt="Varosh" className="h-14 mx-auto object-contain" />
           <p className="text-white/40 text-sm mt-2">PIN ile giris yapin</p>
         </div>
 

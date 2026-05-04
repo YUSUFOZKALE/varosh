@@ -19,6 +19,22 @@ interface CartItem {
   notes: string;
 }
 
+interface SessionOrder {
+  id: number;
+  total: number;
+  status: string;
+  createdAt: string;
+  items: { name: string; quantity: number; unitPrice: number; totalPrice: number }[];
+}
+
+interface TableSession {
+  id: number;
+  tableNumber: number;
+  status: string;
+  total: number;
+  openedAt: string;
+}
+
 const CATEGORY_ICONS: Record<string, string> = {
   "Doner": "🥙",
   "Tost & Sandvic": "🥪",
@@ -46,11 +62,15 @@ export default function TableOrderPage() {
   const [notes, setNotes] = useState("");
   const [showCart, setShowCart] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
-  const [orderResult, setOrderResult] = useState<{ orderId: number; total: number } | null>(null);
   const [isScrolling, setIsScrolling] = useState(false);
   const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
-  const load = useCallback(async () => {
+  const [session, setSession] = useState<TableSession | null>(null);
+  const [sessionOrders, setSessionOrders] = useState<SessionOrder[]>([]);
+  const [showTab, setShowTab] = useState(false);
+  const [orderSent, setOrderSent] = useState(false);
+
+  const loadMenu = useCallback(async () => {
     const res = await fetch("/api/table-menu");
     if (!res.ok) { setLoading(false); return; }
     const data = await res.json();
@@ -61,7 +81,15 @@ export default function TableOrderPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadSession = useCallback(async () => {
+    const res = await fetch(`/api/tables/session?table=${tableNo}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setSession(data.session);
+    setSessionOrders(data.orders || []);
+  }, [tableNo]);
+
+  useEffect(() => { loadMenu(); loadSession(); }, [loadMenu, loadSession]);
 
   function scrollToCategory(catId: number) {
     setActiveCategory(catId);
@@ -127,6 +155,8 @@ export default function TableOrderPage() {
 
   const cartTotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
+  const sessionTotal = session?.total || 0;
+  const grandTotal = sessionTotal + cartTotal;
 
   async function submitOrder() {
     if (cart.length === 0) return;
@@ -150,10 +180,12 @@ export default function TableOrderPage() {
     });
 
     if (res.ok) {
-      const order = await res.json();
-      setOrderResult({ orderId: order.id, total: order.total });
       setCart([]);
       setShowCart(false);
+      setNotes("");
+      setOrderSent(true);
+      setTimeout(() => setOrderSent(false), 4000);
+      loadSession();
     }
     setSubmitting(false);
   }
@@ -169,63 +201,48 @@ export default function TableOrderPage() {
     );
   }
 
-  if (orderResult) {
-    return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4">
-        <div className="text-center max-w-sm w-full space-y-5">
-          <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto">
-            <svg className="w-10 h-10 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-          </div>
-          <h1 className="text-2xl font-bold text-white">Siparisiniiz Alindi!</h1>
-          <div className="bg-neutral-900 rounded-2xl p-5 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-white/50 text-sm">Masa</span>
-              <span className="font-bold text-amber-400 text-lg">#{tableNo}</span>
-            </div>
-            <div className="h-px bg-neutral-800" />
-            <div className="flex justify-between items-center">
-              <span className="text-white/50 text-sm">Siparis No</span>
-              <span className="font-bold text-white text-lg">#{orderResult.orderId}</span>
-            </div>
-            <div className="h-px bg-neutral-800" />
-            <div className="flex justify-between items-center">
-              <span className="text-white/50 text-sm">Toplam</span>
-              <span className="font-bold text-amber-400 text-lg">{orderResult.total.toFixed(0)} TL</span>
-            </div>
-          </div>
-          <div className="bg-neutral-900 rounded-2xl p-4">
-            <p className="text-white/50 text-sm">Siparisiniiz mutfaga iletildi. Hazir olunca masaniza getirilecektir.</p>
-          </div>
-          <button
-            onClick={() => { setOrderResult(null); }}
-            className="w-full py-4 rounded-2xl bg-amber-500 text-black font-bold text-base active:scale-[0.98] transition-transform"
-          >
-            Yeni Siparis Ver
-          </button>
-          <p className="text-white/20 text-xs pt-2">{ps.businessName} &middot; Afiyet olsun!</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-neutral-950 pb-28">
       {/* Hero */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-amber-600 via-amber-500 to-orange-500" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(0,0,0,0),rgba(0,0,0,0.3))]" />
-        <div className="relative px-5 pt-10 pb-7">
+        <div className="relative px-5 pt-8 pb-5">
           <div className="flex items-center justify-between">
             <div>
-              {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-12 drop-shadow-lg object-contain" /> : <span className="text-2xl font-bold text-amber-400">{ps.businessName}</span>}
+              {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-10 drop-shadow-lg object-contain" /> : <span className="text-xl font-bold text-amber-400">{ps.businessName}</span>}
             </div>
-            <div className="bg-black/20 backdrop-blur-sm rounded-2xl px-5 py-3 text-center">
-              <p className="text-amber-100/60 text-[10px] uppercase tracking-wider">Masa</p>
-              <p className="text-white text-2xl font-extrabold leading-none mt-0.5">{tableNo}</p>
+            <div className="flex items-center gap-2">
+              {session && (
+                <button
+                  onClick={() => setShowTab(true)}
+                  className="bg-black/20 backdrop-blur-sm rounded-2xl px-3 py-2 text-center border border-white/10"
+                >
+                  <p className="text-amber-100/60 text-[9px] uppercase tracking-wider">Hesap</p>
+                  <p className="text-white text-sm font-bold leading-none mt-0.5">{sessionTotal.toFixed(0)} TL</p>
+                </button>
+              )}
+              <div className="bg-black/20 backdrop-blur-sm rounded-2xl px-4 py-2.5 text-center">
+                <p className="text-amber-100/60 text-[10px] uppercase tracking-wider">Masa</p>
+                <p className="text-white text-2xl font-extrabold leading-none mt-0.5">{tableNo}</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Order sent toast */}
+      {orderSent && (
+        <div className="fixed top-4 left-4 right-4 z-50 animate-slide-down">
+          <div className="bg-green-600 text-white rounded-2xl px-5 py-4 flex items-center gap-3 shadow-2xl">
+            <svg className="w-6 h-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+            <div>
+              <p className="font-bold text-sm">Siparis mutfaga iletildi!</p>
+              <p className="text-green-100/80 text-xs">Eklemek isterseniz menuye devam edin</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Category Tabs */}
       <div className="sticky top-0 z-20 bg-neutral-950/95 backdrop-blur-lg border-b border-neutral-800/80 shadow-lg shadow-black/20">
@@ -277,7 +294,6 @@ export default function TableOrderPage() {
                           : "border-neutral-800/60"
                       }`}
                     >
-                      {/* Image or placeholder */}
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt={item.name} className="w-full aspect-square object-cover" />
                       ) : (
@@ -285,15 +301,11 @@ export default function TableOrderPage() {
                           <span className="text-2xl opacity-30">{icon}</span>
                         </div>
                       )}
-
-                      {/* Qty badge */}
                       {qty > 0 && (
                         <div className="absolute top-1 right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center text-black text-[10px] font-extrabold shadow-md">
                           {qty}
                         </div>
                       )}
-
-                      {/* Info */}
                       <div className="p-1.5 pb-2">
                         <p className="text-white text-[11px] font-semibold leading-tight line-clamp-2 min-h-[28px]">{item.name}</p>
                         <p className="text-amber-400 font-bold text-xs mt-1">{item.price.toFixed(0)} TL</p>
@@ -332,7 +344,7 @@ export default function TableOrderPage() {
                   <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" /></svg>
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-white">Sepetiniz</h2>
+                  <h2 className="text-lg font-bold text-white">Yeni Eklemeler</h2>
                   <p className="text-white/30 text-xs">Masa {tableNo} &middot; {cartCount} urun</p>
                 </div>
               </div>
@@ -356,9 +368,7 @@ export default function TableOrderPage() {
                           + {c.selectedExtras.map((id) => options.find((o) => o.id === id)?.optionName).filter(Boolean).join(", ")}
                         </p>
                       )}
-                      {c.notes && (
-                        <p className="text-blue-400/60 text-[11px] mt-0.5 italic">📝 {c.notes}</p>
-                      )}
+                      {c.notes && <p className="text-blue-400/60 text-[11px] mt-0.5 italic">📝 {c.notes}</p>}
                       <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-0 bg-neutral-700/50 rounded-full">
                           <button onClick={() => updateQty(c.key, -1)} className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 active:bg-neutral-600">
@@ -379,10 +389,29 @@ export default function TableOrderPage() {
 
             <div className="shrink-0 border-t border-neutral-800/80 bg-neutral-900">
               <div className="p-4 space-y-2">
-                <div className="flex justify-between font-bold text-lg">
-                  <span className="text-white">Toplam</span>
-                  <span className="text-amber-400">{cartTotal.toFixed(0)} TL</span>
-                </div>
+                {sessionTotal > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/40">Mevcut hesap</span>
+                      <span className="text-white/60">{sessionTotal.toFixed(0)} TL</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/40">Yeni eklemeler</span>
+                      <span className="text-white/60">+{cartTotal.toFixed(0)} TL</span>
+                    </div>
+                    <div className="h-px bg-neutral-800" />
+                    <div className="flex justify-between font-bold text-lg">
+                      <span className="text-white">Toplam Hesap</span>
+                      <span className="text-amber-400">{grandTotal.toFixed(0)} TL</span>
+                    </div>
+                  </>
+                )}
+                {sessionTotal === 0 && (
+                  <div className="flex justify-between font-bold text-lg">
+                    <span className="text-white">Toplam</span>
+                    <span className="text-amber-400">{cartTotal.toFixed(0)} TL</span>
+                  </div>
+                )}
               </div>
               <div className="px-4 pb-2">
                 <textarea
@@ -404,10 +433,77 @@ export default function TableOrderPage() {
                       Gonderiliyor...
                     </span>
                   ) : (
-                    `Siparis Ver • ${cartTotal.toFixed(0)} TL`
+                    `Mutfaga Gonder • ${cartTotal.toFixed(0)} TL`
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table Tab / Hesap Drawer */}
+      {showTab && (
+        <div className="fixed inset-0 z-40 flex flex-col">
+          <div className="flex-1 bg-black/70 backdrop-blur-sm" onClick={() => setShowTab(false)} />
+          <div className="bg-neutral-900 rounded-t-3xl max-h-[85vh] flex flex-col animate-slide-up">
+            <div className="p-5 border-b border-neutral-800/80 flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-white">Masa {tableNo} Hesabi</h2>
+                <p className="text-white/30 text-xs">{sessionOrders.length} siparis &middot; {session?.openedAt ? new Date(session.openedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) : ""} dan beri</p>
+              </div>
+              <button onClick={() => setShowTab(false)} className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-white/40 hover:text-white">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {sessionOrders.length === 0 && (
+                <p className="text-white/30 text-center py-8 text-sm">Henuz siparis yok</p>
+              )}
+              {sessionOrders.map((order, idx) => (
+                <div key={order.id} className="bg-neutral-800/40 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-2 py-0.5 rounded-lg">#{order.id}</span>
+                      <span className="text-white/30 text-xs">
+                        {new Date(order.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-lg ${
+                      order.status === "delivered" ? "bg-green-600/20 text-green-400" :
+                      order.status === "preparing" ? "bg-blue-600/20 text-blue-400" :
+                      order.status === "ready" ? "bg-purple-600/20 text-purple-400" :
+                      "bg-neutral-700/50 text-white/40"
+                    }`}>
+                      {order.status === "new" ? "Bekliyor" : order.status === "preparing" ? "Hazirlaniyor" : order.status === "ready" ? "Hazir" : order.status === "delivered" ? "Teslim" : order.status}
+                    </span>
+                  </div>
+                  {order.items.map((item, i) => (
+                    <div key={i} className="flex justify-between text-sm py-1">
+                      <span className="text-white/70">{item.quantity}x {item.name}</span>
+                      <span className="text-white/50">{item.totalPrice.toFixed(0)} TL</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-sm font-semibold pt-2 mt-2 border-t border-neutral-700/30">
+                    <span className="text-white/50">Siparis Toplam</span>
+                    <span className="text-amber-400">{order.total.toFixed(0)} TL</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="shrink-0 border-t border-neutral-800/80 bg-neutral-900 p-5">
+              <div className="flex justify-between font-bold text-xl mb-4">
+                <span className="text-white">Masa Hesabi</span>
+                <span className="text-amber-400">{sessionTotal.toFixed(0)} TL</span>
+              </div>
+              <button
+                onClick={() => setShowTab(false)}
+                className="w-full py-3 rounded-2xl bg-amber-500 text-black font-bold text-base active:scale-[0.98] transition-transform"
+              >
+                Siparis Eklemeye Devam Et
+              </button>
             </div>
           </div>
         </div>
@@ -426,9 +522,12 @@ export default function TableOrderPage() {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
         }
-        .animate-slide-up {
-          animation: slide-up 0.3s ease-out;
+        .animate-slide-up { animation: slide-up 0.3s ease-out; }
+        @keyframes slide-down {
+          from { transform: translateY(-100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
+        .animate-slide-down { animation: slide-down 0.3s ease-out; }
       `}</style>
     </div>
   );

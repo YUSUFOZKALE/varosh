@@ -21,6 +21,7 @@ interface MenuItem {
   imageUrl: string | null;
   isAvailable: boolean;
   prepTimeMinutes: number;
+  sortOrder: number;
 }
 
 interface OptionItem {
@@ -45,6 +46,11 @@ export default function MenuPage() {
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string; itemId: number } | null>(null);
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [sortDragId, setSortDragId] = useState<number | null>(null);
+  const [sortDragOverId, setSortDragOverId] = useState<number | null>(null);
+  const [sortMode, setSortMode] = useState(false);
+  const [catDragId, setCatDragId] = useState<number | null>(null);
+  const [catDragOverId, setCatDragOverId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileInputItemId, setFileInputItemId] = useState<number | null>(null);
 
@@ -72,8 +78,98 @@ export default function MenuPage() {
   useEffect(() => { load(); }, [load]);
 
   const filteredItems = selectedCat
-    ? items.filter((i) => i.categoryId === selectedCat)
-    : items;
+    ? items.filter((i) => i.categoryId === selectedCat).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    : items.sort((a, b) => {
+        const catA = categories.findIndex((c) => c.id === a.categoryId);
+        const catB = categories.findIndex((c) => c.id === b.categoryId);
+        if (catA !== catB) return catA - catB;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
+
+  async function saveSortOrder(reordered: MenuItem[]) {
+    const payload = reordered.map((item, i) => ({ id: item.id, sortOrder: i + 1 }));
+    await fetch("/api/menu/items", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: payload }),
+    });
+    setItems((prev) => {
+      const updated = [...prev];
+      for (const p of payload) {
+        const idx = updated.findIndex((u) => u.id === p.id);
+        if (idx >= 0) updated[idx] = { ...updated[idx], sortOrder: p.sortOrder };
+      }
+      return updated;
+    });
+  }
+
+  function handleSortDrop(targetId: number) {
+    if (sortDragId == null || sortDragId === targetId) { setSortDragId(null); setSortDragOverId(null); return; }
+    const list = [...filteredItems];
+    const fromIdx = list.findIndex((i) => i.id === sortDragId);
+    const toIdx = list.findIndex((i) => i.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    saveSortOrder(list);
+    setSortDragId(null);
+    setSortDragOverId(null);
+  }
+
+  // Touch drag support
+  const touchDragRef = useRef<{ id: number; startY: number; el: HTMLElement | null }>({ id: 0, startY: 0, el: null });
+
+  function handleTouchStart(e: React.TouchEvent, itemId: number) {
+    if (!sortMode) return;
+    touchDragRef.current = { id: itemId, startY: e.touches[0].clientY, el: e.currentTarget as HTMLElement };
+    setSortDragId(itemId);
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    if (!sortMode || !sortDragId) return;
+    const touch = e.touches[0];
+    const els = Array.from(document.querySelectorAll<HTMLElement>("[data-sort-id]"));
+    for (const el of els) {
+      const rect = el.getBoundingClientRect();
+      if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        const overId = parseInt(el.dataset.sortId || "0");
+        if (overId !== sortDragOverId) setSortDragOverId(overId);
+        break;
+      }
+    }
+  }
+
+  function handleTouchEnd() {
+    if (sortDragOverId != null && sortDragId != null) {
+      handleSortDrop(sortDragOverId);
+    }
+    setSortDragId(null);
+    setSortDragOverId(null);
+  }
+
+  async function saveCatOrder(reordered: Category[]) {
+    for (let i = 0; i < reordered.length; i++) {
+      await fetch(`/api/menu/categories/${reordered[i].id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sortOrder: i + 1 }),
+      });
+    }
+    setCategories(reordered.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+  }
+
+  function handleCatDrop(targetId: number) {
+    if (catDragId == null || catDragId === targetId) { setCatDragId(null); setCatDragOverId(null); return; }
+    const list = [...categories];
+    const fromIdx = list.findIndex((c) => c.id === catDragId);
+    const toIdx = list.findIndex((c) => c.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    saveCatOrder(list);
+    setCatDragId(null);
+    setCatDragOverId(null);
+  }
 
   async function saveCat(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -331,11 +427,25 @@ export default function MenuPage() {
 
       {/* Categories Management */}
       <div className="card mb-6">
-        <h3 className="text-sm font-semibold text-white/60 mb-3">Kategoriler</h3>
+        <h3 className="text-sm font-semibold text-white/60 mb-3">Kategoriler <span className="text-white/20 text-[10px]">(surukle ile sirala)</span></h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {categories.map((cat) => (
-            <div key={cat.id} className="bg-surface-2 rounded-xl p-3 flex items-center justify-between">
-              <span className="text-sm">{cat.name}</span>
+            <div
+              key={cat.id}
+              draggable
+              onDragStart={() => setCatDragId(cat.id)}
+              onDragOver={(e) => { e.preventDefault(); setCatDragOverId(cat.id); }}
+              onDragLeave={() => setCatDragOverId(null)}
+              onDrop={(e) => { e.preventDefault(); handleCatDrop(cat.id); }}
+              onDragEnd={() => { setCatDragId(null); setCatDragOverId(null); }}
+              className={`bg-surface-2 rounded-xl p-3 flex items-center justify-between cursor-grab active:cursor-grabbing transition-all ${
+                catDragId === cat.id ? "opacity-40" : ""
+              } ${catDragOverId === cat.id && catDragId !== cat.id ? "ring-2 ring-amber-500" : ""}`}
+            >
+              <div className="flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 text-white/15 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+                <span className="text-sm">{cat.name}</span>
+              </div>
               <div className="flex gap-1">
                 <button onClick={() => { setEditingCat(cat); setCatModal(true); }} className="text-white/30 hover:text-white text-xs px-1">✏️</button>
                 <button onClick={() => deleteCat(cat.id)} className="text-white/30 hover:text-red-400 text-xs px-1">🗑️</button>
@@ -345,10 +455,61 @@ export default function MenuPage() {
         </div>
       </div>
 
+      {/* Sort mode toggle */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-white/60">Urunler {selectedCat ? `(${filteredItems.length})` : ""}</h3>
+        <button
+          onClick={() => setSortMode(!sortMode)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            sortMode ? "bg-amber-500 text-black" : "bg-surface-2 text-white/50 hover:text-white"
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
+          {sortMode ? "Siralamadan Cik" : "Siralama"}
+        </button>
+      </div>
+
       {/* Items Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredItems.map((item) => {
+      <div className={sortMode ? "space-y-2" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"}>
+        {filteredItems.map((item, idx) => {
           const cat = categories.find((c) => c.id === item.categoryId);
+
+          if (sortMode) {
+            return (
+              <div
+                key={item.id}
+                data-sort-id={item.id}
+                draggable
+                onDragStart={() => setSortDragId(item.id)}
+                onDragOver={(e) => { e.preventDefault(); setSortDragOverId(item.id); }}
+                onDragLeave={() => setSortDragOverId(null)}
+                onDrop={(e) => { e.preventDefault(); handleSortDrop(item.id); }}
+                onDragEnd={() => { setSortDragId(null); setSortDragOverId(null); }}
+                onTouchStart={(e) => handleTouchStart(e, item.id)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                className={`flex items-center gap-3 bg-surface-1 rounded-xl p-3 border transition-all cursor-grab active:cursor-grabbing select-none ${
+                  sortDragId === item.id ? "opacity-40 border-amber-500/50" : ""
+                } ${sortDragOverId === item.id && sortDragId !== item.id ? "border-amber-500 bg-amber-500/10" : "border-border"
+                }`}
+              >
+                <div className="flex flex-col items-center gap-0.5 text-white/20 shrink-0">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+                </div>
+                <span className="text-xs text-white/30 font-mono w-5 shrink-0">{idx + 1}</span>
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-surface-2 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{item.name}</p>
+                  <p className="text-xs text-white/40">{cat?.name} &middot; {item.price} TL</p>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div
               key={item.id}

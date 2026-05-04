@@ -137,8 +137,8 @@ export default function PosPage() {
   const availableItems = items.filter((i) => i.isAvailable);
 
   function getEffectivePrice(item: MenuItem): number {
-    if (orderType === "dine_in") return item.price;
-    return item.deliveryPrice || item.price;
+    if (orderType === "delivery") return item.deliveryPrice || item.price;
+    return item.price;
   }
 
   useEffect(() => {
@@ -147,7 +147,7 @@ export default function PosPage() {
       prev.map((c) => {
         const menuItem = items.find((i) => i.id === c.menuItemId);
         if (!menuItem) return c;
-        const base = orderType === "dine_in" ? menuItem.price : (menuItem.deliveryPrice || menuItem.price);
+        const base = orderType === "delivery" ? (menuItem.deliveryPrice || menuItem.price) : menuItem.price;
         let extrasCost = 0;
         for (const optId of c.selectedExtras) {
           const opt = options.find((o) => o.id === optId);

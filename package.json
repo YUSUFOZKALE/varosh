@@ -18,6 +18,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "better-sqlite3": "^12.9.0",
     "drizzle-orm": "^0.45.2",
+    "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",
     "next": "14.2.35",
     "pdf2pic": "^3.2.0",

@@ -163,17 +163,19 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   let accepted = 0;
 
+  const maxBatch = db.select({ max: sql<number>`COALESCE(MAX(${schema.orders.batchId}), 0)` }).from(schema.orders).get();
+  const batchId = (maxBatch?.max || 0) + 1;
+
   for (const id of orderIds) {
     const order = db.select().from(schema.orders).where(eq(schema.orders.id, id)).get();
     if (!order || order.status !== "new") continue;
 
     db.update(schema.orders)
-      .set({ status: "preparing" as const })
+      .set({ status: "preparing" as const, batchId })
       .where(eq(schema.orders.id, id))
       .run();
     accepted++;
 
-    // WhatsApp bildirim
     if (order.customerPhone) {
       const botPort = process.env.BOT_PORT || "3003";
       fetch(`http://localhost:${botPort}/notify`, {
@@ -184,5 +186,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, accepted });
+  return NextResponse.json({ ok: true, accepted, batchId });
 }

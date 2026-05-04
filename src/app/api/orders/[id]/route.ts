@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const db = getDb();
@@ -36,5 +36,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     };
   });
 
-  return NextResponse.json({ ...order, items });
+  let batchLabel: string | null = null;
+  if (order.batchId) {
+    const batchOrders = db.select({ id: schema.orders.id }).from(schema.orders)
+      .where(eq(schema.orders.batchId, order.batchId))
+      .all();
+    const sorted = batchOrders.map((o) => o.id).sort((a, b) => a - b);
+    const idx = sorted.indexOf(order.id) + 1;
+    batchLabel = `${sorted.length}/${idx}`;
+  }
+
+  return NextResponse.json({ ...order, items, batchLabel });
 }
