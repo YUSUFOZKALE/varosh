@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface OrderItem { name: string; quantity: number; totalPrice: number }
 interface TrackData {
@@ -32,6 +33,7 @@ const STEPS = [
 
 export default function TrackOrderPage() {
   const { token } = useParams<{ token: string }>();
+  const ps = usePublicSettings();
   const [data, setData] = useState<TrackData | null>(null);
   const [error, setError] = useState("");
 
@@ -74,7 +76,7 @@ export default function TrackOrderPage() {
       <div className="max-w-md mx-auto space-y-6">
         {/* Header */}
         <div className="text-center pt-4">
-          <img src="/logo.png" alt="VAROSH" className="h-10 mx-auto" />
+          {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-10 mx-auto object-contain" /> : <h1 className="text-xl font-bold text-amber-400 text-center">{ps.businessName}</h1>}
           <p className="text-white/60 text-sm mt-3">Siparis #{data.id}</p>
         </div>
 
@@ -162,7 +164,7 @@ export default function TrackOrderPage() {
         )}
 
         <p className="text-center text-white/20 text-xs pb-4">
-          Sayfa otomatik guncellenir &middot; Varosh Streetfood
+          Sayfa otomatik guncellenir &middot; {ps.businessName}
         </p>
       </div>
     </div>

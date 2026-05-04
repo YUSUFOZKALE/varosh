@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-
-const KADIRLI: [number, number] = [37.3730, 36.0761];
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface Props {
   onPick: (lat: number, lng: number) => void;
@@ -15,39 +14,34 @@ interface Props {
 }
 
 export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, autoLocate }: Props) {
+  const ps = usePublicSettings();
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const shopMarkerRef = useRef<L.Marker | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState("");
 
+  const shopLat = ps.shopLatitude;
+  const shopLng = ps.shopLongitude;
+
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
 
     const map = L.map(ref.current, {
-      maxBounds: [[37.30, 35.98], [37.45, 36.16]],
       maxBoundsViscosity: 0.9,
       minZoom: 13,
       maxZoom: 18,
-    }).setView(KADIRLI, 15);
+    }).setView([shopLat, shopLng], 15);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OSM",
     }).addTo(map);
 
-    const shopIcon = L.divIcon({
-      html: '<div style="background:#f59e0b;width:22px;height:22px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center"><span style="font-size:11px">V</span></div>',
-      className: "",
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
-    L.marker(KADIRLI, { icon: shopIcon }).addTo(map).bindPopup("<b>Varosh</b>");
-
     map.getContainer().style.cursor = "crosshair";
-
     map.on("click", (e: L.LeafletMouseEvent) => {
       pickAndReverse(e.latlng.lat, e.latlng.lng);
     });
@@ -82,6 +76,19 @@ export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, auto
 
   useEffect(() => {
     if (!mapRef.current) return;
+    if (shopMarkerRef.current) shopMarkerRef.current.remove();
+    const initial = ps.businessName.charAt(0).toUpperCase() || "S";
+    const shopIcon = L.divIcon({
+      html: `<div style="background:#f59e0b;width:22px;height:22px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center"><span style="font-size:11px">${initial}</span></div>`,
+      className: "",
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    shopMarkerRef.current = L.marker([shopLat, shopLng], { icon: shopIcon }).addTo(mapRef.current).bindPopup(`<b>${ps.businessName}</b>`);
+  }, [shopLat, shopLng, ps.businessName]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
     if (pickedLat && pickedLng) {
       const latlng = L.latLng(pickedLat, pickedLng);
       if (markerRef.current) {
@@ -103,9 +110,10 @@ export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, auto
     setSearching(true);
     setResults([]);
     try {
-      const q = encodeURIComponent(query.trim() + ", Kadirli, Osmaniye");
+      const suffix = ps.businessAddress ? `, ${ps.businessAddress}` : "";
+      const q = encodeURIComponent(query.trim() + suffix);
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=5&bounded=1&viewbox=35.98,37.45,36.16,37.30`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=5`,
         { headers: { "Accept-Language": "tr" } }
       );
       const data = await res.json();
@@ -173,7 +181,6 @@ export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, auto
 
   return (
     <div>
-      {/* Konumumu Kullan */}
       <button
         onClick={useMyLocation}
         disabled={locating}
@@ -193,7 +200,6 @@ export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, auto
       </button>
       {locError && <p className="text-xs text-red-400 text-center mb-2">{locError}</p>}
 
-      {/* Arama */}
       <div className="flex gap-2 mb-2">
         <input
           type="text"
@@ -212,7 +218,6 @@ export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, auto
         </button>
       </div>
 
-      {/* Arama sonuclari */}
       {results.length > 0 && (
         <div className="bg-neutral-800 rounded-xl border border-neutral-700 mb-2 max-h-[150px] overflow-y-auto">
           {results.map((r, i) => (
@@ -227,7 +232,6 @@ export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, auto
         </div>
       )}
 
-      {/* Harita */}
       <div ref={ref} className="w-full h-[250px] rounded-xl overflow-hidden border border-border map-dark" />
       <p className="text-xs text-white/30 mt-1 text-center">Haritaya dokunarak veya arama yaparak konumunuzu secin</p>
     </div>

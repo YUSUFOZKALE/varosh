@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import dynamic from "next/dynamic";
 
 const CustomerMap = dynamic(() => import("@/components/customer-map"), { ssr: false });
+const OrderMap = dynamic(() => import("@/components/order-map"), { ssr: false });
 
 interface Customer {
   id: number;
@@ -50,7 +51,7 @@ export default function CustomersPage() {
 
   const [formLat, setFormLat] = useState<number | null>(null);
   const [formLng, setFormLng] = useState<number | null>(null);
-  const [pickingFor, setPickingFor] = useState<"add" | "edit" | null>(null);
+  const [formAddress, setFormAddress] = useState("");
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
@@ -71,7 +72,7 @@ export default function CustomersPage() {
       body: JSON.stringify({
         name: fd.get("name") as string,
         phone: fd.get("phone") as string,
-        address: fd.get("address") as string || null,
+        address: formAddress || null,
         notes: fd.get("notes") as string || null,
         latitude: formLat,
         longitude: formLng,
@@ -80,7 +81,7 @@ export default function CustomersPage() {
     setModal(false);
     setFormLat(null);
     setFormLng(null);
-    setPickingFor(null);
+    setFormAddress("");
     load();
   }
 
@@ -94,7 +95,7 @@ export default function CustomersPage() {
       body: JSON.stringify({
         name: fd.get("name") as string,
         phone: fd.get("phone") as string,
-        address: fd.get("address") as string || null,
+        address: formAddress || null,
         notes: fd.get("notes") as string || null,
         latitude: formLat,
         longitude: formLng,
@@ -104,7 +105,7 @@ export default function CustomersPage() {
     setDetail(null);
     setFormLat(null);
     setFormLng(null);
-    setPickingFor(null);
+    setFormAddress("");
     load();
   }
 
@@ -130,6 +131,7 @@ export default function CustomersPage() {
     setEditModal(c);
     setFormLat(c.latitude);
     setFormLng(c.longitude);
+    setFormAddress(c.address || "");
     setDetail(null);
   }
 
@@ -137,6 +139,7 @@ export default function CustomersPage() {
     setModal(true);
     setFormLat(null);
     setFormLng(null);
+    setFormAddress("");
   }
 
   return (
@@ -154,7 +157,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {showMap && (
+      {showMap && !modal && !editModal && (
         <div className="mb-6">
           <CustomerMap
             customers={customers}
@@ -162,19 +165,7 @@ export default function CustomersPage() {
               const full = customers.find((x) => x.id === c.id);
               if (full) setDetail(full);
             }}
-            pickMode={pickingFor !== null}
-            onPickLocation={(lat, lng) => {
-              setFormLat(lat);
-              setFormLng(lng);
-            }}
           />
-          {pickingFor && (
-            <div className="flex justify-center mt-2">
-              <Button variant="secondary" onClick={() => setPickingFor(null)}>
-                Konum Secimi Iptal
-              </Button>
-            </div>
-          )}
         </div>
       )}
 
@@ -314,7 +305,7 @@ export default function CustomersPage() {
       </Modal>
 
       {/* Add Customer Modal */}
-      <Modal open={modal} onClose={() => { setModal(false); setPickingFor(null); setFormLat(null); setFormLng(null); }} title="Yeni Musteri">
+      <Modal open={modal} onClose={() => { setModal(false); setFormLat(null); setFormLng(null); setFormAddress(""); }} title="Yeni Musteri" width="max-w-2xl">
         <form onSubmit={addCustomer} className="space-y-4">
           <div>
             <label className="text-xs text-white/40 mb-1 block">Telefon *</label>
@@ -325,39 +316,40 @@ export default function CustomersPage() {
             <input name="name" className="input-field" />
           </div>
           <div>
-            <label className="text-xs text-white/40 mb-1 block">Adres</label>
-            <textarea name="address" className="input-field" rows={2} />
+            <label className="text-xs text-white/40 mb-1 block">Konum &amp; Adres</label>
+            <OrderMap
+              onPick={(lat, lng) => { setFormLat(lat); setFormLng(lng); }}
+              onAddress={(addr) => setFormAddress(addr)}
+              pickedLat={formLat}
+              pickedLng={formLng}
+            />
+            {formLat && formLng && (
+              <p className="text-xs text-green-400 mt-1">Konum secildi: {formLat.toFixed(5)}, {formLng.toFixed(5)}</p>
+            )}
           </div>
           <div>
-            <label className="text-xs text-white/40 mb-1 block">Konum</label>
-            {formLat && formLng ? (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-green-400">{formLat.toFixed(5)}, {formLng.toFixed(5)}</span>
-                <button type="button" onClick={() => { setFormLat(null); setFormLng(null); }} className="text-xs text-red-400 hover:text-red-300">Sil</button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => { setPickingFor("add"); setShowMap(true); }}
-                className="text-sm text-amber-400 hover:text-amber-300 underline"
-              >
-                Haritadan Sec
-              </button>
-            )}
+            <label className="text-xs text-white/40 mb-1 block">Adres tarifi</label>
+            <input
+              type="text"
+              value={formAddress}
+              onChange={(e) => setFormAddress(e.target.value)}
+              className="input-field"
+              placeholder="Haritadan otomatik dolar veya kendiniz yazin..."
+            />
           </div>
           <div>
             <label className="text-xs text-white/40 mb-1 block">Notlar</label>
             <textarea name="notes" className="input-field" rows={2} />
           </div>
           <div className="flex gap-2 justify-end">
-            <Button variant="secondary" type="button" onClick={() => { setModal(false); setPickingFor(null); }}>Iptal</Button>
+            <Button variant="secondary" type="button" onClick={() => { setModal(false); setFormAddress(""); }}>Iptal</Button>
             <Button type="submit">Kaydet</Button>
           </div>
         </form>
       </Modal>
 
       {/* Edit Customer Modal */}
-      <Modal open={!!editModal} onClose={() => { setEditModal(null); setPickingFor(null); setFormLat(null); setFormLng(null); }} title="Musteri Duzenle">
+      <Modal open={!!editModal} onClose={() => { setEditModal(null); setFormLat(null); setFormLng(null); setFormAddress(""); }} title="Musteri Duzenle" width="max-w-2xl">
         {editModal && (
           <form onSubmit={updateCustomer} className="space-y-4">
             <div>
@@ -369,33 +361,33 @@ export default function CustomersPage() {
               <input name="name" className="input-field" defaultValue={editModal.name || ""} />
             </div>
             <div>
-              <label className="text-xs text-white/40 mb-1 block">Adres</label>
-              <textarea name="address" className="input-field" rows={2} defaultValue={editModal.address || ""} />
+              <label className="text-xs text-white/40 mb-1 block">Konum &amp; Adres</label>
+              <OrderMap
+                onPick={(lat, lng) => { setFormLat(lat); setFormLng(lng); }}
+                onAddress={(addr) => setFormAddress(addr)}
+                pickedLat={formLat}
+                pickedLng={formLng}
+              />
+              {formLat && formLng && (
+                <p className="text-xs text-green-400 mt-1">Konum secildi: {formLat.toFixed(5)}, {formLng.toFixed(5)}</p>
+              )}
             </div>
             <div>
-              <label className="text-xs text-white/40 mb-1 block">Konum</label>
-              {formLat && formLng ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-green-400">{formLat.toFixed(5)}, {formLng.toFixed(5)}</span>
-                  <button type="button" onClick={() => { setFormLat(null); setFormLng(null); }} className="text-xs text-red-400 hover:text-red-300">Sil</button>
-                  <button type="button" onClick={() => { setPickingFor("edit"); setShowMap(true); }} className="text-xs text-amber-400 hover:text-amber-300">Degistir</button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { setPickingFor("edit"); setShowMap(true); }}
-                  className="text-sm text-amber-400 hover:text-amber-300 underline"
-                >
-                  Haritadan Sec
-                </button>
-              )}
+              <label className="text-xs text-white/40 mb-1 block">Adres tarifi</label>
+              <input
+                type="text"
+                value={formAddress}
+                onChange={(e) => setFormAddress(e.target.value)}
+                className="input-field"
+                placeholder="Haritadan otomatik dolar veya kendiniz yazin..."
+              />
             </div>
             <div>
               <label className="text-xs text-white/40 mb-1 block">Notlar</label>
               <textarea name="notes" className="input-field" rows={2} defaultValue={editModal.notes || ""} />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="secondary" type="button" onClick={() => { setEditModal(null); setPickingFor(null); }}>Iptal</Button>
+              <Button variant="secondary" type="button" onClick={() => { setEditModal(null); setFormAddress(""); }}>Iptal</Button>
               <Button type="submit">Guncelle</Button>
             </div>
           </form>

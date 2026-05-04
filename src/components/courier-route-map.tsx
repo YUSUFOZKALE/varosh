@@ -3,13 +3,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-
-const SHOP_LOCATION: [number, number] = [37.3730, 36.0761];
-
-const KADIRLI_BOUNDS: L.LatLngBoundsExpression = [
-  [37.34, 36.04],
-  [37.41, 36.12],
-];
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface RoutePoint {
   id: number;
@@ -27,8 +21,10 @@ interface Props {
 }
 
 export default function CourierRouteMap({ orders }: Props) {
+  const ps = usePublicSettings();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
+  const shopLocation: [number, number] = [ps.shopLatitude, ps.shopLongitude];
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -44,7 +40,6 @@ export default function CourierRouteMap({ orders }: Props) {
     const map = L.map(mapRef.current, {
       zoomControl: true,
       attributionControl: false,
-      maxBounds: KADIRLI_BOUNDS,
       maxBoundsViscosity: 0.9,
       minZoom: 13,
       maxZoom: 18,
@@ -62,10 +57,10 @@ export default function CourierRouteMap({ orders }: Props) {
       iconSize: [26, 26],
       iconAnchor: [13, 13],
     });
-    L.marker(SHOP_LOCATION, { icon: shopIcon }).addTo(map)
-      .bindPopup("<b>Varosh Streetfood</b><br/><small>Kadirli Merkez</small>");
+    L.marker(shopLocation, { icon: shopIcon }).addTo(map)
+      .bindPopup(`<b>${ps.businessName}</b><br/><small>${ps.businessAddress}</small>`);
 
-    const routePoints: [number, number][] = [SHOP_LOCATION];
+    const routePoints: [number, number][] = [shopLocation];
 
     located.forEach((order, idx) => {
       const pos: [number, number] = [order.deliveryLatitude!, order.deliveryLongitude!];
@@ -108,7 +103,7 @@ export default function CourierRouteMap({ orders }: Props) {
       );
     });
 
-    routePoints.push(SHOP_LOCATION);
+    routePoints.push(shopLocation);
 
     for (let i = 0; i < routePoints.length - 1; i++) {
       const fromOrder = i === 0 ? null : located[i - 1];

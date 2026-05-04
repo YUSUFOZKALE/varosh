@@ -34,6 +34,29 @@ interface FinanceEntry {
   createdAt: string;
 }
 
+interface OrderItem {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  extras: { id: number; name: string; price: number }[];
+  removed: string[];
+  notes: string | null;
+}
+
+interface OrderDetail {
+  id: number;
+  total: number;
+  subtotal: number;
+  deliveryFee: number;
+  customerName: string | null;
+  customerPhone: string | null;
+  tableNumber: number | null;
+  deliveryAddress: string | null;
+  source: string;
+  items: OrderItem[];
+}
+
 interface ZReport {
   date: string;
   orders: { totalOrders: number; totalRevenue: number; totalDiscount: number; cancelledOrders: number };
@@ -87,6 +110,7 @@ export default function CashierPage() {
   const [tab, setTab] = useState<Tab>("orders");
   const [unpaid, setUnpaid] = useState<Order[]>([]);
   const [payModal, setPayModal] = useState<Order | null>(null);
+  const [payDetail, setPayDetail] = useState<OrderDetail | null>(null);
   const [register, setRegister] = useState<{ movements: CashRegisterEntry[]; balance: number }>({ movements: [], balance: 0 });
   const [zReport, setZReport] = useState<ZReport | null>(null);
   const [addCashModal, setAddCashModal] = useState(false);
@@ -124,6 +148,13 @@ export default function CashierPage() {
     loadExpenses();
   }, [loadUnpaid, loadRegister, loadZReport, loadExpenses]);
 
+  async function openPayModal(order: Order) {
+    setPayModal(order);
+    setPayDetail(null);
+    const res = await fetch(`/api/orders/${order.id}`);
+    if (res.ok) setPayDetail(await res.json());
+  }
+
   async function processPayment(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!payModal) return;
@@ -142,6 +173,7 @@ export default function CashierPage() {
       }),
     });
     setPayModal(null);
+    setPayDetail(null);
     loadUnpaid();
     loadRegister();
     loadZReport();
@@ -193,10 +225,6 @@ export default function CashierPage() {
     return "Gel-Al";
   }
 
-  const change = payModal ? (
-    parseFloat((document.querySelector<HTMLInputElement>('input[name="received"]')?.value || "0")) - payModal.total
-  ) : 0;
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -244,7 +272,7 @@ export default function CashierPage() {
                   {order.customerName && <p>{order.customerName}</p>}
                   <p className="text-xs">{getSourceLabel(order.source)}</p>
                 </div>
-                <Button className="w-full" onClick={() => setPayModal(order)}>Odeme Al</Button>
+                <Button className="w-full" onClick={() => openPayModal(order)}>Odeme Al</Button>
               </div>
             ))}
             {unpaid.length === 0 && (
@@ -427,40 +455,105 @@ export default function CashierPage() {
       )}
 
       {/* Payment Modal */}
-      <Modal open={!!payModal} onClose={() => setPayModal(null)} title={`Siparis #${payModal?.id} Odeme`}>
-        {payModal && (
-          <form onSubmit={processPayment} className="space-y-4">
-            <div className="bg-surface-2 rounded-xl p-4 text-center">
-              <p className="text-sm text-white/40">Odenecek Tutar</p>
-              <p className="text-4xl font-bold text-accent">{payModal.total.toFixed(0)} TL</p>
-              <p className="text-xs text-white/30 mt-1">{getOrderLabel(payModal)} — {getSourceLabel(payModal.source)}</p>
+      {payModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => { setPayModal(null); setPayDetail(null); }}>
+          <div className="bg-neutral-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 text-center border-b border-neutral-800/60 shrink-0">
+              <h3 className="text-lg font-bold text-white">Siparis #{payModal.id}</h3>
+              <p className="text-white/40 text-sm mt-1">
+                {payModal.customerName || "Isimsiz"} — {getOrderLabel(payModal)} — {getSourceLabel(payModal.source)}
+              </p>
             </div>
-            <div>
-              <label className="text-xs text-white/40 mb-1 block">Odeme Yontemi</label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex items-center justify-center gap-2 p-3 bg-surface-2 rounded-xl cursor-pointer has-[:checked]:bg-green-600/20 has-[:checked]:border-green-500/50 border border-transparent transition-all">
-                  <input type="radio" name="method" value="cash" defaultChecked className="hidden" />
-                  <span className="text-lg">💵</span>
-                  <span className="font-medium">Nakit</span>
-                </label>
-                <label className="flex items-center justify-center gap-2 p-3 bg-surface-2 rounded-xl cursor-pointer has-[:checked]:bg-blue-600/20 has-[:checked]:border-blue-500/50 border border-transparent transition-all">
-                  <input type="radio" name="method" value="card" className="hidden" />
-                  <span className="text-lg">💳</span>
-                  <span className="font-medium">Kart</span>
-                </label>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {payDetail ? (
+                <>
+                  <div className="space-y-2.5">
+                    {payDetail.items.map((item, i) => (
+                      <div key={i} className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/50 text-sm font-bold">{item.quantity}x</span>
+                            <span className="text-white text-sm font-medium">{item.name}</span>
+                          </div>
+                          {item.removed.length > 0 && (
+                            <p className="text-red-400/60 text-[11px] ml-7">- {item.removed.join(", ")}</p>
+                          )}
+                          {item.extras.length > 0 && (
+                            <p className="text-amber-400/60 text-[11px] ml-7">+ {item.extras.map((e) => e.name).join(", ")}</p>
+                          )}
+                          {item.notes && (
+                            <p className="text-blue-400/50 text-[11px] ml-7 italic">{item.notes}</p>
+                          )}
+                        </div>
+                        <span className="text-white/70 text-sm font-semibold shrink-0">{item.totalPrice.toFixed(0)} TL</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-neutral-800/60 space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/40">Ara Toplam</span>
+                      <span className="text-white/60">{payDetail.subtotal.toFixed(0)} TL</span>
+                    </div>
+                    {payDetail.deliveryFee > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-white/40">Teslimat</span>
+                        <span className="text-white/60">{payDetail.deliveryFee.toFixed(0)} TL</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-white/10 border-t-white/40 rounded-full animate-spin" />
+                </div>
+              )}
+
+              <div className="flex justify-between items-center mt-3 pt-3 border-t border-neutral-800/60">
+                <span className="text-white text-lg font-bold">Toplam</span>
+                <span className="text-amber-400 text-2xl font-extrabold">{payModal.total.toFixed(0)} TL</span>
               </div>
             </div>
-            <div>
-              <label className="text-xs text-white/40 mb-1 block">Alinan Tutar (Nakit icin)</label>
-              <input name="received" type="number" step="1" className="input-field" placeholder={payModal.total.toFixed(0)} />
+
+            <div className="p-5 border-t border-neutral-800/60 shrink-0">
+              <form onSubmit={processPayment} className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center justify-center gap-2 p-3 bg-surface-2 rounded-xl cursor-pointer has-[:checked]:bg-green-600/20 has-[:checked]:border-green-500/50 border border-transparent transition-all">
+                    <input type="radio" name="method" value="cash" defaultChecked className="hidden" />
+                    <span className="font-medium">Nakit</span>
+                  </label>
+                  <label className="flex items-center justify-center gap-2 p-3 bg-surface-2 rounded-xl cursor-pointer has-[:checked]:bg-blue-600/20 has-[:checked]:border-blue-500/50 border border-transparent transition-all">
+                    <input type="radio" name="method" value="card" className="hidden" />
+                    <span className="font-medium">Kart</span>
+                  </label>
+                </div>
+                <div>
+                  <label className="text-xs text-white/40 mb-1 block">Alinan Tutar (Nakit icin)</label>
+                  <input name="received" type="number" step="1" className="input-field" placeholder={payModal.total.toFixed(0)} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.open(`/receipt/${payModal.id}`, "_blank")}
+                    className="py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/60 font-medium text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                    Yazdir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPayModal(null); setPayDetail(null); }}
+                    className="py-3 rounded-xl bg-neutral-800 text-white/40 font-medium text-sm"
+                  >
+                    Iptal
+                  </button>
+                  <Button type="submit">Onayla</Button>
+                </div>
+              </form>
             </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="secondary" type="button" onClick={() => setPayModal(null)}>Iptal</Button>
-              <Button type="submit">Odemeyi Onayla</Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+          </div>
+        </div>
+      )}
 
       {/* Add Cash Movement Modal */}
       <Modal open={addCashModal} onClose={() => setAddCashModal(false)} title="Kasa Hareketi Ekle">

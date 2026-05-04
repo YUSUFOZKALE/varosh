@@ -1,5 +1,3 @@
-const SHOP_LOCATION: [number, number] = [37.3730, 36.0761];
-
 interface RoutePoint {
   id: number;
   deliveryLatitude: number | null;
@@ -8,7 +6,8 @@ interface RoutePoint {
 
 export function calculateRoute(
   deliveries: RoutePoint[],
-  selectedIds: number[]
+  selectedIds: number[],
+  shopLocation: [number, number] = [37.3730, 36.0761]
 ): number[] {
   const points = deliveries.filter(
     (d) => selectedIds.includes(d.id) && d.deliveryLatitude && d.deliveryLongitude
@@ -18,7 +17,7 @@ export function calculateRoute(
 
   const result: number[] = [];
   const remaining = [...points];
-  let current = SHOP_LOCATION;
+  let current = shopLocation;
 
   while (remaining.length > 0) {
     let nearest = 0;

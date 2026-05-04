@@ -23,6 +23,15 @@ interface MenuItem {
   prepTimeMinutes: number;
 }
 
+interface OptionItem {
+  id?: number;
+  menuItemId?: number;
+  groupName: string;
+  optionName: string;
+  priceModifier: number;
+  isDefault: boolean;
+}
+
 export default function MenuPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -44,6 +53,12 @@ export default function MenuPage() {
   const [modalImagePreview, setModalImagePreview] = useState<string | null>(null);
   const [modalDragOver, setModalDragOver] = useState(false);
   const modalFileRef = useRef<HTMLInputElement>(null);
+
+  // For item modal options (Icindekiler + Ekstralar)
+  const [itemOptions, setItemOptions] = useState<OptionItem[]>([]);
+  const [newIngredient, setNewIngredient] = useState("");
+  const [newExtraName, setNewExtraName] = useState("");
+  const [newExtraPrice, setNewExtraPrice] = useState("");
 
   const load = useCallback(async () => {
     const [cRes, iRes] = await Promise.all([
@@ -125,13 +140,41 @@ export default function MenuPage() {
     if (modalImage && savedItem?.id) {
       const imgFd = new FormData();
       imgFd.append("image", modalImage);
-      await fetch(`/api/menu/items/${savedItem.id}/image`, { method: "POST", body: imgFd });
+      const imgRes = await fetch(`/api/menu/items/${savedItem.id}/image`, { method: "POST", body: imgFd });
+      if (!imgRes.ok) {
+        const err = await imgRes.json().catch(() => ({ error: "Bilinmeyen hata" }));
+        alert(`Urun kaydedildi ama fotograf yuklenemedi: ${err.error}`);
+      }
+    }
+
+    // Save options
+    if (savedItem?.id) {
+      const existingRes = await fetch(`/api/menu/items/${savedItem.id}/options`);
+      const existingOptions: OptionItem[] = await existingRes.json();
+      const keepIds = new Set(itemOptions.filter((o) => o.id).map((o) => o.id));
+
+      for (const old of existingOptions) {
+        if (!keepIds.has(old.id)) {
+          await fetch(`/api/menu/options/${old.id}`, { method: "DELETE" });
+        }
+      }
+
+      for (const opt of itemOptions) {
+        if (!opt.id) {
+          await fetch(`/api/menu/items/${savedItem.id}/options`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(opt),
+          });
+        }
+      }
     }
 
     setItemModal(false);
     setEditingItem(null);
     setModalImage(null);
     setModalImagePreview(null);
+    setItemOptions([]);
     load();
   }
 
@@ -172,14 +215,28 @@ export default function MenuPage() {
   }
 
   async function uploadImage(itemId: number, file: File) {
-    if (!file.type.startsWith("image/")) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Gecersiz dosya tipi. Sadece resim dosyalari yuklenebilir.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Dosya 5MB'dan buyuk olamaz.");
+      return;
+    }
     setUploadingId(itemId);
-    const fd = new FormData();
-    fd.append("image", file);
-    const res = await fetch(`/api/menu/items/${itemId}/image`, { method: "POST", body: fd });
-    if (res.ok) {
-      const data = await res.json();
-      setItems(prev => prev.map(i => i.id === itemId ? { ...i, imageUrl: data.imageUrl + "?t=" + Date.now() } : i));
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch(`/api/menu/items/${itemId}/image`, { method: "POST", body: fd });
+      if (res.ok) {
+        const data = await res.json();
+        setItems(prev => prev.map(i => i.id === itemId ? { ...i, imageUrl: data.imageUrl + "?t=" + Date.now() } : i));
+      } else {
+        const err = await res.json().catch(() => ({ error: "Bilinmeyen hata" }));
+        alert(`Fotograf yuklenemedi: ${err.error || res.statusText}`);
+      }
+    } catch (e) {
+      alert("Fotograf yuklenirken baglanti hatasi olustu.");
     }
     setUploadingId(null);
   }
@@ -221,10 +278,19 @@ export default function MenuPage() {
     e.target.value = "";
   }
 
-  function openItemModal(item: MenuItem | null) {
+  async function openItemModal(item: MenuItem | null) {
     setEditingItem(item);
     setModalImage(null);
     setModalImagePreview(item?.imageUrl || null);
+    setNewIngredient("");
+    setNewExtraName("");
+    setNewExtraPrice("");
+    if (item?.id) {
+      const res = await fetch(`/api/menu/items/${item.id}/options`);
+      setItemOptions(await res.json());
+    } else {
+      setItemOptions([]);
+    }
     setItemModal(true);
   }
 
@@ -342,7 +408,12 @@ export default function MenuPage() {
                   </button>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-amber-400 font-bold">{item.price} TL</span>
+                  <div className="flex flex-col">
+                    <span className="text-amber-400 font-bold text-sm">{item.price} TL <span className="text-white/20 font-normal text-[10px]">mekan</span></span>
+                    {item.deliveryPrice && (
+                      <span className="text-orange-400/70 font-semibold text-xs">{item.deliveryPrice} TL <span className="text-white/20 font-normal text-[10px]">paket</span></span>
+                    )}
+                  </div>
                   <div className="flex gap-1">
                     <button onClick={() => openItemModal(item)} className="text-white/30 hover:text-white text-sm px-1">✏️</button>
                     <button onClick={() => deleteItem(item.id)} className="text-white/30 hover:text-red-400 text-sm px-1">🗑️</button>
@@ -395,7 +466,7 @@ export default function MenuPage() {
       </Modal>
 
       {/* Item Modal with Image Upload */}
-      <Modal open={itemModal} onClose={() => { setItemModal(false); setEditingItem(null); setModalImage(null); setModalImagePreview(null); }} title={editingItem ? "Urun Duzenle" : "Yeni Urun"}>
+      <Modal open={itemModal} onClose={() => { setItemModal(false); setEditingItem(null); setModalImage(null); setModalImagePreview(null); setItemOptions([]); }} title={editingItem ? "Urun Duzenle" : "Yeni Urun"}>
         <form onSubmit={saveItem} className="space-y-4">
           {/* Drag-drop image area */}
           <div>
@@ -465,8 +536,96 @@ export default function MenuPage() {
             <label className="text-xs text-white/40 mb-1 block">Hazirlama Suresi (dk)</label>
             <input name="prepTimeMinutes" type="number" defaultValue={editingItem?.prepTimeMinutes || 10} className="input-field" />
           </div>
+
+          {/* Icindekiler */}
+          <div className="border border-border rounded-xl p-3">
+            <label className="text-xs text-white/40 mb-2 block">Icindekiler <span className="text-white/20">(musteri cikarabilir)</span></label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {itemOptions.filter((o) => o.groupName === "Icindekiler").map((opt, i) => (
+                <span key={opt.id ?? `new-ing-${i}`} className="flex items-center gap-1 bg-surface-2 text-white/70 text-xs px-2.5 py-1.5 rounded-lg">
+                  {opt.optionName}
+                  <button type="button" onClick={() => setItemOptions((prev) => prev.filter((p) => p !== opt))} className="text-white/30 hover:text-red-400 ml-0.5">&times;</button>
+                </span>
+              ))}
+              {itemOptions.filter((o) => o.groupName === "Icindekiler").length === 0 && (
+                <span className="text-xs text-white/20">Henuz eklenmedi</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={newIngredient}
+                onChange={(e) => setNewIngredient(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (!newIngredient.trim()) return;
+                    setItemOptions((prev) => [...prev, { groupName: "Icindekiler", optionName: newIngredient.trim(), priceModifier: 0, isDefault: true }]);
+                    setNewIngredient("");
+                  }
+                }}
+                placeholder="Orn: Marul, Domates..."
+                className="input-field text-xs flex-1"
+              />
+              <Button type="button" variant="secondary" className="text-xs shrink-0" onClick={() => {
+                if (!newIngredient.trim()) return;
+                setItemOptions((prev) => [...prev, { groupName: "Icindekiler", optionName: newIngredient.trim(), priceModifier: 0, isDefault: true }]);
+                setNewIngredient("");
+              }}>Ekle</Button>
+            </div>
+          </div>
+
+          {/* Ekstralar */}
+          <div className="border border-border rounded-xl p-3">
+            <label className="text-xs text-white/40 mb-2 block">Ekstralar <span className="text-white/20">(ek ucretli secenekler)</span></label>
+            <div className="space-y-1.5 mb-2">
+              {itemOptions.filter((o) => o.groupName === "Ekstralar").map((opt, i) => (
+                <div key={opt.id ?? `new-ext-${i}`} className="flex items-center justify-between bg-surface-2 text-xs px-2.5 py-1.5 rounded-lg">
+                  <span className="text-white/70">{opt.optionName}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400 font-medium">+{opt.priceModifier} TL</span>
+                    <button type="button" onClick={() => setItemOptions((prev) => prev.filter((p) => p !== opt))} className="text-white/30 hover:text-red-400">&times;</button>
+                  </div>
+                </div>
+              ))}
+              {itemOptions.filter((o) => o.groupName === "Ekstralar").length === 0 && (
+                <span className="text-xs text-white/20">Henuz eklenmedi</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={newExtraName}
+                onChange={(e) => setNewExtraName(e.target.value)}
+                placeholder="Orn: Peynir, Sos..."
+                className="input-field text-xs flex-1"
+              />
+              <input
+                value={newExtraPrice}
+                onChange={(e) => setNewExtraPrice(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (!newExtraName.trim() || !newExtraPrice) return;
+                    setItemOptions((prev) => [...prev, { groupName: "Ekstralar", optionName: newExtraName.trim(), priceModifier: parseFloat(newExtraPrice) || 0, isDefault: false }]);
+                    setNewExtraName("");
+                    setNewExtraPrice("");
+                  }
+                }}
+                placeholder="TL"
+                type="number"
+                step="0.5"
+                className="input-field text-xs w-20"
+              />
+              <Button type="button" variant="secondary" className="text-xs shrink-0" onClick={() => {
+                if (!newExtraName.trim() || !newExtraPrice) return;
+                setItemOptions((prev) => [...prev, { groupName: "Ekstralar", optionName: newExtraName.trim(), priceModifier: parseFloat(newExtraPrice) || 0, isDefault: false }]);
+                setNewExtraName("");
+                setNewExtraPrice("");
+              }}>Ekle</Button>
+            </div>
+          </div>
+
           <div className="flex gap-2 justify-end">
-            <Button variant="secondary" type="button" onClick={() => { setItemModal(false); setEditingItem(null); setModalImage(null); setModalImagePreview(null); }}>Iptal</Button>
+            <Button variant="secondary" type="button" onClick={() => { setItemModal(false); setEditingItem(null); setModalImage(null); setModalImagePreview(null); setItemOptions([]); }}>Iptal</Button>
             <Button type="submit">Kaydet</Button>
           </div>
         </form>

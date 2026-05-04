@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import ItemCustomizeModal, { type MenuItemOption, type CustomizedItem } from "@/components/item-customize-modal";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface Category { id: number; name: string; sortOrder: number }
 interface MenuItem { id: number; name: string; description: string | null; price: number; categoryId: number; imageUrl: string | null }
@@ -32,17 +33,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Icecekler": "from-sky-900/60 to-sky-800/30",
 };
 
-type CardLayout = "wide" | "portrait" | "square" | "standard";
-
-function getCategoryLayout(catName: string): CardLayout {
-  if (catName === "Doner") return "wide";
-  if (catName === "Icecekler") return "portrait";
-  if (catName === "Atistirmalik") return "square";
-  return "standard";
-}
-
 export default function TableOrderPage() {
   const { tableNo } = useParams<{ tableNo: string }>();
+  const ps = usePublicSettings();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [options, setOptions] = useState<MenuItemOption[]>([]);
@@ -209,7 +202,7 @@ export default function TableOrderPage() {
           >
             Yeni Siparis Ver
           </button>
-          <p className="text-white/20 text-xs pt-2">Varosh Streetfood &middot; Afiyet olsun!</p>
+          <p className="text-white/20 text-xs pt-2">{ps.businessName} &middot; Afiyet olsun!</p>
         </div>
       </div>
     );
@@ -224,7 +217,7 @@ export default function TableOrderPage() {
         <div className="relative px-5 pt-10 pb-7">
           <div className="flex items-center justify-between">
             <div>
-              <img src="/logo.png" alt="VAROSH" className="h-12 drop-shadow-lg" />
+              {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-12 drop-shadow-lg object-contain" /> : <span className="text-2xl font-bold text-amber-400">{ps.businessName}</span>}
             </div>
             <div className="bg-black/20 backdrop-blur-sm rounded-2xl px-5 py-3 text-center">
               <p className="text-amber-100/60 text-[10px] uppercase tracking-wider">Masa</p>
@@ -259,115 +252,53 @@ export default function TableOrderPage() {
       </div>
 
       {/* Menu Sections */}
-      <div className="px-4 pt-4">
+      <div className="px-3 pt-4">
         {categories.map((cat) => {
           const catItems = items.filter((i) => i.categoryId === cat.id);
           if (catItems.length === 0) return null;
           const icon = CATEGORY_ICONS[cat.name] || "🍽️";
-          const layout = getCategoryLayout(cat.name);
+          const catColor = CATEGORY_COLORS[cat.name] || "from-neutral-800/60 to-neutral-700/30";
           return (
-            <div key={cat.id} ref={(el) => { sectionRefs.current[cat.id] = el; }} className="mb-6">
-              <div className="flex items-center gap-2 mb-3 pt-2">
-                <span className="text-xl">{icon}</span>
-                <h2 className="text-lg font-bold text-white">{cat.name}</h2>
-                <span className="text-xs text-white/30 ml-1">({catItems.length})</span>
+            <div key={cat.id} ref={(el) => { sectionRefs.current[cat.id] = el; }} className="mb-5">
+              <div className="flex items-center gap-2 mb-2.5 pt-1 px-1">
+                <span className="text-lg">{icon}</span>
+                <h2 className="text-base font-bold text-white">{cat.name}</h2>
               </div>
-              <div className={`${layout === "portrait" ? "grid grid-cols-2 gap-3" : layout === "square" ? "grid grid-cols-2 gap-3" : "space-y-3"}`}>
+              <div className="grid grid-cols-3 gap-2">
                 {catItems.map((item) => {
                   const qty = getItemQty(item.id);
-                  const catColor = CATEGORY_COLORS[cat.name] || "from-neutral-800/60 to-neutral-700/30";
-
-                  const addBtn = (size: "sm" | "md") => (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleItemClick(item); }}
-                      className={`bg-amber-500 hover:bg-amber-400 active:scale-95 text-black font-bold rounded-full transition-all shadow-lg shadow-amber-500/20 ${size === "sm" ? "text-xs px-3 py-1.5" : "text-sm px-5 py-2"}`}
-                    >
-                      {qty > 0 ? `${qty}x Ekle` : "Ekle"}
-                    </button>
-                  );
-
-                  const placeholder = (aspect: string) => (
-                    <div className={`w-full ${aspect} bg-gradient-to-br ${catColor} flex items-center justify-center`}>
-                      <span className="text-4xl opacity-40">{CATEGORY_ICONS[cat.name] || "🍽️"}</span>
-                    </div>
-                  );
-
-                  const badge = qty > 0 ? (
-                    <div className="absolute top-2 right-2 w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center text-black text-xs font-extrabold shadow-lg shadow-amber-500/30 ring-2 ring-amber-400/30 z-10">
-                      {qty}
-                    </div>
-                  ) : null;
-
-                  if (layout === "wide") {
-                    return (
-                      <div key={item.id} onClick={() => handleItemClick(item)} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all cursor-pointer ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                        <div className="relative">
-                          {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className="w-full aspect-[16/9] object-cover" />
-                          ) : placeholder("aspect-[16/9]")}
-                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-900 via-neutral-900/80 to-transparent pt-12 pb-4 px-4">
-                            <h3 className="font-bold text-white text-lg leading-tight">{item.name}</h3>
-                            {item.description && <p className="text-white/50 text-xs mt-1">{item.description}</p>}
-                          </div>
-                          {badge}
-                        </div>
-                        <div className="px-4 pb-4 flex items-center justify-between">
-                          <span className="text-amber-400 font-extrabold text-xl">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
-                          {addBtn("md")}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (layout === "portrait" || layout === "square") {
-                    const aspect = layout === "portrait" ? "aspect-[2/3]" : "aspect-square";
-                    return (
-                      <div key={item.id} onClick={() => handleItemClick(item)} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all cursor-pointer ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                        <div className="relative">
-                          {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className={`w-full ${aspect} object-cover`} />
-                          ) : placeholder(aspect)}
-                          {badge}
-                        </div>
-                        <div className="p-3">
-                          <h3 className="font-bold text-white text-sm leading-tight mb-2">{item.name}</h3>
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-400 font-extrabold text-base">{item.price.toFixed(0)} TL</span>
-                            {addBtn("sm")}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
                   return (
-                    <div key={item.id} onClick={() => handleItemClick(item)} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all cursor-pointer ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                      <div className="flex">
-                        <div className="flex-1 p-4 flex flex-col justify-between min-h-[120px]">
-                          <div>
-                            <h3 className="font-bold text-white text-[15px] leading-tight mb-1">{item.name}</h3>
-                            {item.description && <p className="text-white/40 text-xs leading-relaxed line-clamp-2">{item.description}</p>}
-                          </div>
-                          <div className="flex items-center justify-between mt-3">
-                            <span className="text-amber-400 font-extrabold text-lg">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
-                            {addBtn("md")}
-                          </div>
+                    <button
+                      key={item.id}
+                      onClick={() => handleItemClick(item)}
+                      className={`relative bg-neutral-900 rounded-xl overflow-hidden border text-left transition-all active:scale-[0.97] ${
+                        qty > 0
+                          ? "border-amber-500/50 ring-1 ring-amber-500/20"
+                          : "border-neutral-800/60"
+                      }`}
+                    >
+                      {/* Image or placeholder */}
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.name} className="w-full aspect-square object-cover" />
+                      ) : (
+                        <div className={`w-full aspect-square bg-gradient-to-br ${catColor} flex items-center justify-center`}>
+                          <span className="text-2xl opacity-30">{icon}</span>
                         </div>
-                        <div className="w-[130px] shrink-0 relative overflow-hidden">
-                          {item.imageUrl ? (
-                            <>
-                              <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover min-h-[120px]" />
-                              <div className="absolute inset-0 bg-gradient-to-r from-neutral-900 via-transparent to-transparent w-8" />
-                            </>
-                          ) : (
-                            <div className={`w-full h-full bg-gradient-to-br ${catColor} flex items-center justify-center min-h-[120px]`}>
-                              <span className="text-3xl opacity-40">{CATEGORY_ICONS[cat.name] || "🍽️"}</span>
-                            </div>
-                          )}
-                          {badge}
+                      )}
+
+                      {/* Qty badge */}
+                      {qty > 0 && (
+                        <div className="absolute top-1 right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center text-black text-[10px] font-extrabold shadow-md">
+                          {qty}
                         </div>
+                      )}
+
+                      {/* Info */}
+                      <div className="p-1.5 pb-2">
+                        <p className="text-white text-[11px] font-semibold leading-tight line-clamp-2 min-h-[28px]">{item.name}</p>
+                        <p className="text-amber-400 font-bold text-xs mt-1">{item.price.toFixed(0)} TL</p>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

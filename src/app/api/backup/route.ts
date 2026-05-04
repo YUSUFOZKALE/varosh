@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { getBusinessName } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function GET() {
   return new NextResponse(buffer, {
     headers: {
       "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="varosh-backup-${timestamp}.db"`,
+      "Content-Disposition": `attachment; filename="${getBusinessName().toLowerCase().replace(/\s+/g, "-")}-backup-${timestamp}.db"`,
     },
   });
 }

@@ -37,6 +37,7 @@ export async function GET() {
       name: i.name,
       description: i.description,
       price: i.price,
+      deliveryPrice: i.deliveryPrice,
       categoryId: i.categoryId,
       imageUrl: i.imageUrl,
     })),

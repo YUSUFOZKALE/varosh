@@ -4,10 +4,6 @@ import { useEffect, useRef, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-const KADIRLI_BOUNDS: L.LatLngBoundsExpression = [
-  [37.34, 36.04],
-  [37.41, 36.12],
-];
 
 interface Props {
   latitude: number;
@@ -34,7 +30,6 @@ export default function LocationPicker({ latitude, longitude, onLocationChange }
     if (!mapRef.current || mapInstance.current) return;
 
     const map = L.map(mapRef.current, {
-      maxBounds: KADIRLI_BOUNDS,
       maxBoundsViscosity: 0.9,
       minZoom: 13,
       maxZoom: 18,

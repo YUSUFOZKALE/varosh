@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import dynamic from "next/dynamic";
 import { calculateRoute } from "@/lib/route-calc";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 import QRCode from "qrcode";
 
 const DeliveryMap = dynamic(() => import("@/components/delivery-map"), { ssr: false });
@@ -53,6 +54,7 @@ interface Customer {
 type Tab = "list" | "map" | "whatsapp" | "couriers";
 
 export default function DeliveryPage() {
+  const ps = usePublicSettings();
   const [tab, setTab] = useState<Tab>("list");
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [couriers, setCouriers] = useState<Courier[]>([]);
@@ -150,17 +152,18 @@ export default function DeliveryPage() {
   }
 
   function buildRoute() {
-    const route = calculateRoute(deliveries, selectedIds);
+    const route = calculateRoute(deliveries, selectedIds, [ps.shopLatitude, ps.shopLongitude]);
     setRouteOrder(route);
   }
 
   async function createBatch() {
     if (!batchCourier || selectedIds.length === 0) return;
+    const orderedIds = routeOrder.length > 0 ? routeOrder : selectedIds;
     const res = await fetch("/api/delivery/batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        orderIds: routeOrder.length > 0 ? routeOrder : selectedIds,
+        orderIds: orderedIds,
         courierId: batchCourier,
         baseUrl: window.location.origin,
       }),
@@ -175,6 +178,17 @@ export default function DeliveryPage() {
         body: JSON.stringify({ orderId, courierId: batchCourier }),
       });
     }
+
+    const printWin = window.open(`/receipt/${orderedIds[0]}`, "batch_print", "width=400,height=700");
+    for (let i = 1; i < orderedIds.length; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      if (printWin && !printWin.closed) {
+        printWin.location.href = `/receipt/${orderedIds[i]}`;
+      } else {
+        window.open(`/receipt/${orderedIds[i]}`, "batch_print", "width=400,height=700");
+      }
+    }
+
     load();
   }
 

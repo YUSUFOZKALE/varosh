@@ -4,10 +4,12 @@ import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import ItemCustomizeModal, { type MenuItemOption, type CustomizedItem } from "@/components/item-customize-modal";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 const OrderMap = dynamic(() => import("@/components/order-map"), { ssr: false });
 
 interface Category { id: number; name: string; sortOrder: number }
+interface MenuItemRaw { id: number; name: string; description: string | null; price: number; deliveryPrice: number | null; categoryId: number; imageUrl: string | null }
 interface MenuItem { id: number; name: string; description: string | null; price: number; categoryId: number; imageUrl: string | null }
 interface CartItem {
   key: string;
@@ -73,6 +75,7 @@ type Step = "phone" | "register" | "address" | "menu" | "done";
 
 function SiparisContent() {
   const searchParams = useSearchParams();
+  const ps = usePublicSettings();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const autoChecked = useRef(false);
@@ -110,7 +113,10 @@ function SiparisContent() {
     const menu = await menuRes.json();
     const s = await settingsRes.json();
     setCategories(menu.categories);
-    setItems(menu.items);
+    setItems(menu.items.map((i: MenuItemRaw) => ({
+      ...i,
+      price: i.deliveryPrice ?? i.price,
+    })));
     setOptions(menu.options);
     setShop({ ...s, businessPhone: s.businessPhone || "" });
     if (menu.categories.length > 0) setActiveCategory(menu.categories[0].id);
@@ -362,7 +368,7 @@ function SiparisContent() {
         <div className="max-w-sm w-full space-y-6">
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 mb-6">
-              <img src="/logo.png" alt="VAROSH" className="h-10 drop-shadow-lg" />
+              {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-10 drop-shadow-lg object-contain" /> : <span className="text-xl font-bold text-amber-400">{ps.businessName}</span>}
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">Hosgeldiniz!</h1>
             <p className="text-white/50 text-sm">Siparis icin telefon numaranizi girin</p>
@@ -391,7 +397,7 @@ function SiparisContent() {
         <div className="max-w-lg mx-auto space-y-5 pt-4">
           <div className="text-center py-3">
             <div className="flex items-center justify-center gap-2 mb-3">
-              <img src="/logo.png" alt="VAROSH" className="h-8 drop-shadow-lg" />
+              {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-8 drop-shadow-lg object-contain" /> : <span className="text-lg font-bold text-amber-400">{ps.businessName}</span>}
             </div>
             <h2 className="text-xl font-bold text-white mb-1">Hosgeldiniz!</h2>
             <p className="text-white/40 text-sm">Bilgilerinizi kontrol edin</p>
@@ -548,7 +554,7 @@ function SiparisContent() {
           >
             Yeni Siparis Ver
           </button>
-          <p className="text-white/20 text-xs pt-2">Varosh Streetfood &middot; Afiyet olsun!</p>
+          <p className="text-white/20 text-xs pt-2">{ps.businessName} &middot; Afiyet olsun!</p>
         </div>
       </div>
     );
@@ -564,7 +570,7 @@ function SiparisContent() {
         <div className="relative px-5 pt-8 pb-5">
           <div className="flex items-center justify-between">
             <div>
-              <img src="/logo.png" alt="VAROSH" className="h-10 drop-shadow-lg" />
+              {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-10 drop-shadow-lg object-contain" /> : <span className="text-xl font-bold text-amber-400">{ps.businessName}</span>}
             </div>
             <div className="bg-black/20 backdrop-blur-sm rounded-2xl px-4 py-2.5 text-center">
               <p className="text-amber-100/60 text-[10px] uppercase tracking-wider">Teslimat</p>

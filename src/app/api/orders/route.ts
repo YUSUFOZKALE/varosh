@@ -86,7 +86,8 @@ export async function POST(req: NextRequest) {
     }
 
     const qty = item.quantity || 1;
-    let price = deliveryAddress ? (menuItem.deliveryPrice || menuItem.price) : menuItem.price;
+    const useDeliveryPrice = !tableNumber || source === "phone" || source === "whatsapp" || source === "yemeksepeti" || source === "getir";
+    let price = useDeliveryPrice ? (menuItem.deliveryPrice || menuItem.price) : menuItem.price;
 
     let extraCost = 0;
     if (item.selectedOptions && Array.isArray(item.selectedOptions)) {

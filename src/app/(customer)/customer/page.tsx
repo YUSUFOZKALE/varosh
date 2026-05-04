@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface Category {
   id: number;
@@ -19,6 +20,7 @@ interface MenuItem {
 }
 
 export default function CustomerMenuPage() {
+  const ps = usePublicSettings();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
@@ -45,7 +47,7 @@ export default function CustomerMenuPage() {
     <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="bg-amber-500 text-white text-center py-6 px-4">
-        <h1 className="text-2xl font-bold">Varosh Streetfood</h1>
+        <h1 className="text-2xl font-bold">{ps.businessName}</h1>
         <p className="text-amber-100 text-sm mt-1">Menu</p>
       </div>
 
@@ -97,7 +99,7 @@ export default function CustomerMenuPage() {
 
       {/* Footer */}
       <div className="text-center py-6 text-gray-300 text-xs">
-        Varosh Streetfood &copy; {new Date().getFullYear()}
+        {ps.businessName} &copy; {new Date().getFullYear()}
       </div>
     </div>
   );

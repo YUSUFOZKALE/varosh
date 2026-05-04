@@ -3,14 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-
-const KADIRLI_CENTER: [number, number] = [37.3730, 36.0761];
-const SHOP_LOCATION: [number, number] = [37.3730, 36.0761];
-
-const KADIRLI_BOUNDS: L.LatLngBoundsExpression = [
-  [37.34, 36.04],
-  [37.41, 36.12],
-];
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface Customer {
   id: number;
@@ -39,10 +32,12 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 export default function CustomerMap({ customers, onSelectCustomer, pickMode, onPickLocation }: Props) {
+  const ps = usePublicSettings();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const pickMarkerRef = useRef<L.Marker | null>(null);
+  const shopMarkerRef = useRef<L.Marker | null>(null);
 
   const handleMapClick = useCallback((e: L.LeafletMouseEvent) => {
     if (!pickMode || !onPickLocation) return;
@@ -64,33 +59,37 @@ export default function CustomerMap({ customers, onSelectCustomer, pickMode, onP
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
+    const center: [number, number] = [ps.shopLatitude, ps.shopLongitude];
     const map = L.map(mapRef.current, {
-      maxBounds: KADIRLI_BOUNDS,
       maxBoundsViscosity: 0.9,
       minZoom: 13,
       maxZoom: 18,
-    }).setView(KADIRLI_CENTER, 15);
+    }).setView(center, 15);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
     }).addTo(map);
 
+    markersRef.current = L.layerGroup().addTo(map);
+    mapInstance.current = map;
+
+    return () => { map.remove(); mapInstance.current = null; };
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstance.current) return;
+    if (shopMarkerRef.current) shopMarkerRef.current.remove();
     const shopIcon = L.divIcon({
       html: `<div style="background:#f59e0b;width:26px;height:26px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center"><span style="font-size:13px">&#127965;</span></div>`,
       className: "",
       iconSize: [26, 26],
       iconAnchor: [13, 13],
     });
-    L.marker(SHOP_LOCATION, { icon: shopIcon })
-      .addTo(map)
-      .bindPopup("<b>Varosh Streetfood</b><br/><small>Kadirli Merkez, Osmaniye</small>");
-
-    markersRef.current = L.layerGroup().addTo(map);
-    mapInstance.current = map;
-
-    return () => { map.remove(); mapInstance.current = null; };
-  }, []);
+    shopMarkerRef.current = L.marker([ps.shopLatitude, ps.shopLongitude], { icon: shopIcon })
+      .addTo(mapInstance.current)
+      .bindPopup(`<b>${ps.businessName}</b><br/><small>${ps.businessAddress}</small>`);
+  }, [ps.shopLatitude, ps.shopLongitude, ps.businessName, ps.businessAddress]);
 
   useEffect(() => {
     const map = mapInstance.current;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import QRCode from "qrcode";
@@ -34,6 +34,7 @@ const SETTING_GROUPS = [
   {
     title: "Teslimat Ayarlari",
     fields: [
+      { key: "delivery_fee_enabled", label: "Teslimat Ucreti Aktif", type: "toggle" },
       { key: "default_delivery_fee", label: "Teslimat Ucreti (TL)", type: "number" },
       { key: "min_order_amount", label: "Min Siparis Tutari (TL)", type: "number" },
       { key: "delivery_radius_km", label: "Teslimat Yaricapi (km)", type: "number" },
@@ -72,11 +73,28 @@ export default function SettingsPage() {
   const [botStatus, setBotStatus] = useState<{ connected: boolean; hasQR: boolean; uptime: number; phone?: string } | null>(null);
   const [botQr, setBotQr] = useState<string | null>(null);
 
-  const [tableInput, setTableInput] = useState<string>("");
   const [tablesData, setTablesData] = useState<TableRow[]>([]);
   const [tableQrs, setTableQrs] = useState<Record<number, string>>({});
   const [tablesLoading, setTablesLoading] = useState(false);
-  const [tablesSaving, setTablesSaving] = useState(false);
+  const [tableAdding, setTableAdding] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
+
+  const [logoUrl, setLogoUrl] = useState<string>("");
+  const [headerLogoUrl, setHeaderLogoUrl] = useState<string>("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingHeader, setUploadingHeader] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const headerInputRef = useRef<HTMLInputElement>(null);
+
+  async function generateQr(tableNumber: number): Promise<string> {
+    const url = `${window.location.origin}/table/${tableNumber}`;
+    return QRCode.toDataURL(url, {
+      width: 300,
+      margin: 1,
+      color: { dark: "#F59E0B", light: "#1a1a1a" },
+    });
+  }
 
   const loadTables = useCallback(async () => {
     setTablesLoading(true);
@@ -85,40 +103,56 @@ export default function SettingsPage() {
       const data: TableRow[] = await res.json();
       const active = data.filter((t) => t.isActive);
       setTablesData(active);
-      setTableInput(active.length.toString());
       const qrs: Record<number, string> = {};
       for (const t of active) {
-        const url = `${window.location.origin}/table/${t.number}`;
-        qrs[t.number] = await QRCode.toDataURL(url, {
-          width: 300,
-          margin: 1,
-          color: { dark: "#F59E0B", light: "#1a1a1a" },
-        });
+        qrs[t.number] = await generateQr(t.number);
       }
       setTableQrs(qrs);
     } catch { /* ignore */ }
     setTablesLoading(false);
   }, []);
 
-  async function saveTables() {
-    const num = parseInt(tableInput);
-    if (!num || num < 1 || num > 200) return;
-    setTablesSaving(true);
+  async function addTable() {
+    setTableAdding(true);
     try {
       await fetch("/api/tables", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: num }),
+        body: JSON.stringify({}),
       });
       await loadTables();
     } catch { /* ignore */ }
-    setTablesSaving(false);
+    setTableAdding(false);
+  }
+
+  async function deleteTable(id: number) {
+    setDeletingId(id);
+    try {
+      await fetch(`/api/tables/${id}`, { method: "DELETE" });
+      await loadTables();
+    } catch { /* ignore */ }
+    setDeletingId(null);
+  }
+
+  async function regenerateQr(id: number, tableNumber: number) {
+    setRegeneratingId(id);
+    try {
+      await fetch(`/api/tables/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regenerateToken: true }),
+      });
+      const newQr = await generateQr(tableNumber);
+      setTableQrs((prev) => ({ ...prev, [tableNumber]: newQr }));
+    } catch { /* ignore */ }
+    setRegeneratingId(null);
   }
 
   function printTableQr(tableNumber: number, qrDataUrl: string) {
     const w = window.open("", "_blank", "width=400,height=500");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>Masa ${tableNumber} QR</title><style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;font-family:system-ui}img{width:280px;height:280px;border-radius:16px}h1{font-size:48px;margin:20px 0 4px;color:#F59E0B}p{font-size:14px;opacity:.5;margin:0}@media print{body{background:#fff;color:#000}h1{color:#000}}</style></head><body><img src="${qrDataUrl}" /><h1>Masa ${tableNumber}</h1><p>Varosh Streetfood</p><script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+    const bName = settings.business_name || "Isletme";
+    w.document.write(`<!DOCTYPE html><html><head><title>Masa ${tableNumber} QR</title><style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;font-family:system-ui}img{width:280px;height:280px;border-radius:16px}h1{font-size:48px;margin:20px 0 4px;color:#F59E0B}p{font-size:14px;opacity:.5;margin:0}@media print{body{background:#fff;color:#000}h1{color:#000}}</style></head><body><img src="${qrDataUrl}" /><h1>Masa ${tableNumber}</h1><p>${bName}</p><script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
     w.document.close();
   }
 
@@ -129,10 +163,32 @@ export default function SettingsPage() {
     for (const t of tablesData) {
       const qr = tableQrs[t.number];
       if (!qr) continue;
-      cards += `<div class="card"><img src="${qr}" /><h2>Masa ${t.number}</h2><p>QR okutarak siparis ver</p></div>`;
+      cards += `<div class="card"><img src="${qr}" /><h2>Masa ${t.number}</h2><p>${settings.business_name || ""} - QR okutarak siparis ver</p></div>`;
     }
     w.document.write(`<!DOCTYPE html><html><head><title>Tum Masa QR Kodlari</title><style>body{margin:0;padding:20px;background:#1a1a1a;color:#fff;font-family:system-ui}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px}.card{background:#262626;border-radius:16px;padding:16px;text-align:center}img{width:180px;height:180px;border-radius:12px}h2{font-size:24px;margin:10px 0 2px;color:#F59E0B}p{font-size:11px;opacity:.4;margin:0}@media print{body{background:#fff;color:#000}.card{background:#f5f5f5;break-inside:avoid}h2{color:#000}}</style></head><body><div class="grid">${cards}</div><script>setTimeout(()=>window.print(),500)<\/script></body></html>`);
     w.document.close();
+  }
+
+  async function uploadBranding(file: File, type: "logo" | "header-logo") {
+    const isLogo = type === "logo";
+    isLogo ? setUploadingLogo(true) : setUploadingHeader(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      fd.append("type", type);
+      const res = await fetch("/api/branding/upload", { method: "POST", body: fd });
+      if (res.ok) {
+        const data = await res.json();
+        const url = data.imageUrl + "?t=" + Date.now();
+        isLogo ? setLogoUrl(url) : setHeaderLogoUrl(url);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Yukleme basarisiz");
+      }
+    } catch {
+      alert("Yukleme sirasinda hata olustu");
+    }
+    isLogo ? setUploadingLogo(false) : setUploadingHeader(false);
   }
 
   const load = useCallback(async () => {
@@ -140,7 +196,10 @@ export default function SettingsPage() {
       fetch("/api/settings"),
       fetch("/api/settings/business-status"),
     ]);
-    setSettings(await settingsRes.json());
+    const s = await settingsRes.json();
+    setSettings(s);
+    if (s.business_logo_url) setLogoUrl(s.business_logo_url);
+    if (s.business_header_logo_url) setHeaderLogoUrl(s.business_header_logo_url);
     const statusData = await statusRes.json();
     setBusinessStatus(statusData.status);
   }, []);
@@ -270,30 +329,75 @@ export default function SettingsPage() {
         <p className="text-xs text-white/30 mt-2">Sunucu yedegi ./backups klasorune kaydedilir (max 10 adet)</p>
       </div>
 
+      {/* Marka & Gorunum */}
+      <div className="card mb-6">
+        <h3 className="text-lg font-semibold mb-4">Marka & Gorunum</h3>
+        <p className="text-xs text-white/30 mb-4">Logo ve header gorseli tum sayfalarda (menu, siparis, fis, giris ekrani) kullanilir.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Logo Upload */}
+          <div>
+            <label className="text-xs text-white/40 mb-2 block">Logo (Kare, 512x512)</label>
+            <div
+              className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all hover:border-white/20 ${uploadingLogo ? "opacity-50 animate-pulse" : "border-border"}`}
+              onClick={() => logoInputRef.current?.click()}
+            >
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="h-24 mx-auto rounded-xl object-contain bg-surface-2 p-2" />
+              ) : (
+                <div className="py-6">
+                  <div className="text-3xl opacity-30 mb-2">🖼️</div>
+                  <p className="text-sm text-white/30">Tikla veya surukle</p>
+                </div>
+              )}
+            </div>
+            <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadBranding(f, "logo");
+              e.target.value = "";
+            }} />
+            {logoUrl && <p className="text-[10px] text-white/20 mt-1 truncate">{logoUrl.split("?")[0]}</p>}
+          </div>
+
+          {/* Header Logo Upload */}
+          <div>
+            <label className="text-xs text-white/40 mb-2 block">Header Logo (Yatay, 800x200)</label>
+            <div
+              className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all hover:border-white/20 ${uploadingHeader ? "opacity-50 animate-pulse" : "border-border"}`}
+              onClick={() => headerInputRef.current?.click()}
+            >
+              {headerLogoUrl ? (
+                <img src={headerLogoUrl} alt="Header Logo" className="h-16 mx-auto rounded-lg object-contain bg-surface-2 p-2" />
+              ) : (
+                <div className="py-6">
+                  <div className="text-3xl opacity-30 mb-2">🏷️</div>
+                  <p className="text-sm text-white/30">Tikla veya surukle</p>
+                </div>
+              )}
+            </div>
+            <input ref={headerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadBranding(f, "header-logo");
+              e.target.value = "";
+            }} />
+            {headerLogoUrl && <p className="text-[10px] text-white/20 mt-1 truncate">{headerLogoUrl.split("?")[0]}</p>}
+          </div>
+        </div>
+      </div>
+
       {/* Masa Yonetimi */}
       <div className="card mb-6">
-        <h3 className="text-lg font-semibold mb-4">Masa Yonetimi</h3>
-        <div className="flex items-end gap-3 mb-4">
-          <div className="flex-1">
-            <label className="text-xs text-white/40 mb-1 block">Masa Sayisi</label>
-            <input
-              type="number"
-              min={1}
-              max={200}
-              value={tableInput}
-              onChange={(e) => setTableInput(e.target.value)}
-              className="input-field"
-              placeholder="Ornegin: 10"
-            />
-          </div>
-          <Button onClick={saveTables} disabled={tablesSaving}>
-            {tablesSaving ? "Olusturuluyor..." : "Masalari Olustur"}
-          </Button>
-          {tablesData.length > 0 && (
-            <Button variant="secondary" onClick={printAllQrs}>
-              Tumunu Yazdir
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Masa Yonetimi</h3>
+          <div className="flex gap-2">
+            <Button onClick={addTable} disabled={tableAdding}>
+              {tableAdding ? "Ekleniyor..." : "+ Yeni Masa"}
             </Button>
-          )}
+            {tablesData.length > 0 && (
+              <Button variant="secondary" onClick={printAllQrs}>
+                Tumunu Yazdir
+              </Button>
+            )}
+          </div>
         </div>
         {tablesLoading ? (
           <div className="text-center py-8">
@@ -303,28 +407,67 @@ export default function SettingsPage() {
         ) : tablesData.length === 0 ? (
           <div className="bg-surface-2 rounded-xl p-6 text-center">
             <div className="text-3xl mb-2 opacity-40">🪑</div>
-            <p className="text-white/40 text-sm">Henuz masa olusturulmadi. Yukardaki alana masa sayisini girip &quot;Masalari Olustur&quot; butonuna basin.</p>
+            <p className="text-white/40 text-sm">Henuz masa yok. &quot;+ Yeni Masa&quot; butonuyla tek tek ekleyin.</p>
           </div>
         ) : (
           <>
-            <p className="text-xs text-white/30 mb-3">{tablesData.length} aktif masa &middot; QR kodlar mekan fiyatlariyla menuyu acar &middot; Tiklayarak tek tek yazdirabilirsiniz</p>
+            <p className="text-xs text-white/30 mb-3">{tablesData.length} aktif masa &middot; QR kodlar mekan fiyatlariyla menuyu acar</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {tablesData.map((t) => (
-                <button
+                <div
                   key={t.id}
-                  onClick={() => tableQrs[t.number] && printTableQr(t.number, tableQrs[t.number])}
-                  className="bg-surface-2 rounded-xl p-3 text-center hover:bg-surface-2/80 transition-all hover:ring-1 hover:ring-amber-500/30 group"
+                  className="bg-surface-2 rounded-xl p-3 text-center relative group"
                 >
-                  {tableQrs[t.number] ? (
-                    <img src={tableQrs[t.number]} alt={`Masa ${t.number}`} className="w-full aspect-square rounded-lg mb-2" />
-                  ) : (
-                    <div className="w-full aspect-square rounded-lg bg-neutral-800 mb-2 flex items-center justify-center">
-                      <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
-                    </div>
-                  )}
-                  <p className="text-amber-400 font-bold text-sm">Masa {t.number}</p>
-                  <p className="text-white/20 text-[10px] mt-0.5 group-hover:text-white/40">Tiklayip yazdir</p>
-                </button>
+                  {/* Delete button */}
+                  <button
+                    onClick={() => {
+                      if (confirm(`Masa ${t.number} silinecek. Emin misiniz?`)) deleteTable(t.id);
+                    }}
+                    disabled={deletingId === t.id}
+                    className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-400"
+                    title="Masayi sil"
+                  >
+                    {deletingId === t.id ? (
+                      <div className="w-3 h-3 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                    )}
+                  </button>
+
+                  {/* QR image - click to print */}
+                  <button
+                    onClick={() => tableQrs[t.number] && printTableQr(t.number, tableQrs[t.number])}
+                    className="w-full"
+                  >
+                    {tableQrs[t.number] ? (
+                      <img src={tableQrs[t.number]} alt={`Masa ${t.number}`} className="w-full aspect-square rounded-lg mb-2 hover:opacity-80 transition-opacity" />
+                    ) : (
+                      <div className="w-full aspect-square rounded-lg bg-neutral-800 mb-2 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+                      </div>
+                    )}
+                    <p className="text-amber-400 font-bold text-sm">Masa {t.number}</p>
+                  </button>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-1 mt-2 justify-center">
+                    <button
+                      onClick={() => tableQrs[t.number] && printTableQr(t.number, tableQrs[t.number])}
+                      className="text-[10px] text-white/30 hover:text-white/60 bg-neutral-800 px-2 py-1 rounded-md transition-colors"
+                      title="Yazdir"
+                    >
+                      Yazdir
+                    </button>
+                    <button
+                      onClick={() => regenerateQr(t.id, t.number)}
+                      disabled={regeneratingId === t.id}
+                      className="text-[10px] text-white/30 hover:text-amber-400 bg-neutral-800 px-2 py-1 rounded-md transition-colors"
+                      title="QR kodunu yenile"
+                    >
+                      {regeneratingId === t.id ? "..." : "QR Yenile"}
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           </>
@@ -344,7 +487,7 @@ export default function SettingsPage() {
               <div className="flex gap-2 justify-center">
                 <Button size="sm" variant="secondary" onClick={() => {
                   const link = document.createElement("a");
-                  link.download = "varosh-siparis-qr.png";
+                  link.download = `${(settings.business_name || "siparis").toLowerCase().replace(/\s+/g, "-")}-siparis-qr.png`;
                   link.href = orderQr!;
                   link.click();
                 }}>QR Indir</Button>
@@ -369,7 +512,7 @@ export default function SettingsPage() {
               <div className="flex gap-2 justify-center">
                 <Button size="sm" variant="secondary" onClick={() => {
                   const link = document.createElement("a");
-                  link.download = "varosh-whatsapp-qr.png";
+                  link.download = `${(settings.business_name || "whatsapp").toLowerCase().replace(/\s+/g, "-")}-whatsapp-qr.png`;
                   link.href = wpQr!;
                   link.click();
                 }}>QR Indir</Button>
@@ -545,18 +688,36 @@ export default function SettingsPage() {
             <div key={group.title} className="card">
               <h3 className="text-lg font-semibold mb-4">{group.title}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {group.fields.map((field) => (
+                {group.fields.map((field) => {
+                  if (field.key === "default_delivery_fee" && settings.delivery_fee_enabled !== "true") return null;
+                  return (
                   <div key={field.key}>
-                    <label className="text-xs text-white/40 mb-1 block">{field.label}</label>
-                    <input
-                      type={field.type}
-                      value={settings[field.key] || ""}
-                      onChange={(e) => setSettings({ ...settings, [field.key]: e.target.value })}
-                      className="input-field"
-                      placeholder={(field as any).placeholder || ""}
-                    />
+                    {field.type === "toggle" ? (
+                      <label className="flex items-center justify-between cursor-pointer py-2">
+                        <span className="text-sm text-white/70">{field.label}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, [field.key]: settings[field.key] === "true" ? "false" : "true" })}
+                          className={`relative w-11 h-6 rounded-full transition-colors ${settings[field.key] === "true" ? "bg-green-500" : "bg-neutral-700"}`}
+                        >
+                          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow ${settings[field.key] === "true" ? "translate-x-5" : ""}`} />
+                        </button>
+                      </label>
+                    ) : (
+                      <>
+                        <label className="text-xs text-white/40 mb-1 block">{field.label}</label>
+                        <input
+                          type={field.type}
+                          value={settings[field.key] || ""}
+                          onChange={(e) => setSettings({ ...settings, [field.key]: e.target.value })}
+                          className="input-field"
+                          placeholder={(field as any).placeholder || ""}
+                        />
+                      </>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );

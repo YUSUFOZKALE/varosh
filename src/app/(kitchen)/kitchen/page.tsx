@@ -112,6 +112,15 @@ export default function KitchenPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderIds }),
     });
+    const printWin = window.open(`/receipt/${orderIds[0]}`, "batch_print", "width=400,height=700");
+    for (let i = 1; i < orderIds.length; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      if (printWin && !printWin.closed) {
+        printWin.location.href = `/receipt/${orderIds[i]}`;
+      } else {
+        window.open(`/receipt/${orderIds[i]}`, "batch_print", "width=400,height=700");
+      }
+    }
     setAcceptingCluster(null);
     load();
   }

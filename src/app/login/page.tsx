@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 export default function LoginPage() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const ps = usePublicSettings();
 
   const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"];
 
@@ -43,7 +45,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-surface flex items-center justify-center">
       <div className="w-full max-w-xs">
         <div className="text-center mb-8">
-          <img src="/logo.png" alt="VAROSH" className="h-16 mx-auto" />
+          {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-16 mx-auto object-contain" /> : <h1 className="text-2xl font-bold text-amber-400">{ps.businessName}</h1>}
           <p className="text-white/40 text-sm mt-2">PIN ile giris yapin</p>
         </div>
 

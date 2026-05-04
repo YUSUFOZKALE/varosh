@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface NavItem { href: string; label: string; icon: string; roles?: string[] }
 
@@ -25,6 +26,7 @@ const NAV: NavItem[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const ps = usePublicSettings();
   const [role, setRole] = useState<string>("owner");
   const [staffName, setStaffName] = useState<string>("");
   const [open, setOpen] = useState(false);
@@ -49,7 +51,7 @@ export function Sidebar() {
       {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-surface border-b border-border flex items-center justify-between px-4 h-14">
         <button onClick={() => setOpen(!open)} className="text-white/60 text-2xl">☰</button>
-        <img src="/logo-header.png" alt="VAROSH" className="h-7" />
+        {ps.headerLogoUrl ? <img src={ps.headerLogoUrl} alt={ps.businessName} className="h-7 object-contain" /> : <span className="font-bold text-amber-400">{ps.businessName}</span>}
         <div className="w-8" />
       </div>
 
@@ -63,8 +65,8 @@ export function Sidebar() {
         open ? "translate-x-0" : "-translate-x-full"
       }`}>
         <div className="p-5 border-b border-border">
-          <img src="/logo-header.png" alt="VAROSH" className="h-7" />
-          <p className="text-[10px] text-white/30 mt-1">Streetfood POS</p>
+          {ps.headerLogoUrl ? <img src={ps.headerLogoUrl} alt={ps.businessName} className="h-7 object-contain" /> : <span className="font-bold text-amber-400">{ps.businessName}</span>}
+          <p className="text-[10px] text-white/30 mt-1">POS Sistemi</p>
         </div>
 
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">

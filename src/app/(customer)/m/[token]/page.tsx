@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import ItemCustomizeModal, { type MenuItemOption, type CustomizedItem } from "@/components/item-customize-modal";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface Category { id: number; name: string; sortOrder: number }
 interface MenuItem { id: number; name: string; description: string | null; price: number; categoryId: number; imageUrl: string | null }
@@ -27,6 +28,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 export default function CustomerOrderPage() {
   const { token } = useParams<{ token: string }>();
+  const ps = usePublicSettings();
   const [linkInfo, setLinkInfo] = useState<LinkInfo | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -229,7 +231,7 @@ export default function CustomerOrderPage() {
           >
             Siparisi Canli Takip Et
           </a>
-          <p className="text-white/20 text-xs pt-2">Varosh Streetfood &middot; 0542 190 06 62</p>
+          <p className="text-white/20 text-xs pt-2">{ps.businessName}{ps.businessPhone ? ` · ${ps.businessPhone}` : ""}</p>
         </div>
       </div>
     );
@@ -244,10 +246,10 @@ export default function CustomerOrderPage() {
         <div className="relative px-5 pt-10 pb-7">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <img src="/logo.png" alt="VAROSH" className="h-12 drop-shadow-lg" />
+              {ps.logoUrl ? <img src={ps.logoUrl} alt={ps.businessName} className="h-12 drop-shadow-lg object-contain" /> : <span className="text-2xl font-bold text-amber-400">{ps.businessName}</span>}
             </div>
             <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-4 py-2 text-right">
-              <p className="text-white text-xs font-medium">Adliye Cad. Kadirli</p>
+              {ps.businessAddress && <p className="text-white text-xs font-medium">{ps.businessAddress}</p>}
               <p className="text-amber-100/70 text-[10px] mt-0.5">25-40 dk teslimat</p>
             </div>
           </div>

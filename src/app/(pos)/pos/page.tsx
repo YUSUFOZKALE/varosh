@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import ItemCustomizeModal, { type MenuItemOption, type CustomizedItem } from "@/components/item-customize-modal";
+import { type MenuItemOption } from "@/components/item-customize-modal";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface Category { id: number; name: string; }
 interface MenuItem { id: number; categoryId: number; name: string; price: number; deliveryPrice: number | null; isAvailable: boolean; prepTimeMinutes: number; imageUrl: string | null; description: string | null; }
 interface CartItem { key: string; menuItemId: number; name: string; price: number; quantity: number; imageUrl: string | null; removedIngredients: string[]; selectedExtras: number[]; notes: string; }
+interface CompletedOrder { id: number; total: number; subtotal: number; deliveryFee: number; orderType: OrderType; items: CartItem[]; customerName: string; tableNumber: string; }
 
 interface Customer { id: number; phone: string; name: string | null; address: string | null; orderCount: number; totalSpent: number }
 type OrderType = "dine_in" | "takeaway" | "delivery";
@@ -18,6 +20,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export default function PosPage() {
+  const ps = usePublicSettings();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [selectedCat, setSelectedCat] = useState<number | null>(null);
@@ -29,11 +32,19 @@ export default function PosPage() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
-  const [lastOrder, setLastOrder] = useState<{ id: number; total: number } | null>(null);
+  const [completedOrder, setCompletedOrder] = useState<CompletedOrder | null>(null);
+
+  // Acik Hesaplar (Open Bills)
+  interface OpenOrder { id: number; customerName: string | null; customerPhone: string | null; tableNumber: number | null; total: number; status: string; source: string; paymentConfirmedAt: string | null; createdAt: string; deliveryAddress: string | null; }
+  interface BillDetail { id: number; customerName: string | null; tableNumber: number | null; total: number; subtotal: number; deliveryFee: number; source: string; items: { name: string; quantity: number; unitPrice: number; totalPrice: number; extras: { id: number; name: string; price: number }[]; removed: string[]; notes: string | null }[]; }
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [showBills, setShowBills] = useState(false);
+  const [billDetail, setBillDetail] = useState<BillDetail | null>(null);
+  const [payingBill, setPayingBill] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [custSearch, setCustSearch] = useState("");
   const [showCustDropdown, setShowCustDropdown] = useState(false);
-  const [deliveryFeeAmount, setDeliveryFeeAmount] = useState(20);
+  const [deliveryFeeAmount, setDeliveryFeeAmount] = useState(0);
   const [options, setOptions] = useState<MenuItemOption[]>([]);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -41,12 +52,13 @@ export default function PosPage() {
   const [isScrolling, setIsScrolling] = useState(false);
 
   const load = useCallback(async () => {
-    const [cRes, iRes, custRes, setRes, optRes] = await Promise.all([
+    const [cRes, iRes, custRes, setRes, optRes, ordRes] = await Promise.all([
       fetch("/api/menu/categories"),
       fetch("/api/menu/items"),
       fetch("/api/customers"),
       fetch("/api/settings"),
       fetch("/api/menu/options"),
+      fetch("/api/orders?limit=100"),
     ]);
     const cats = await cRes.json();
     setCategories(cats);
@@ -54,10 +66,19 @@ export default function PosPage() {
     setCustomers(await custRes.json());
     try {
       const settings: { key: string; value: string }[] = await setRes.json();
-      const fee = settings.find((s) => s.key === "default_delivery_fee");
-      if (fee) setDeliveryFeeAmount(parseFloat(fee.value));
+      const feeEnabled = settings.find((s) => s.key === "delivery_fee_enabled");
+      if (feeEnabled?.value === "true") {
+        const fee = settings.find((s) => s.key === "default_delivery_fee");
+        if (fee) setDeliveryFeeAmount(parseFloat(fee.value));
+      } else {
+        setDeliveryFeeAmount(0);
+      }
     } catch {}
     try { setOptions(await optRes.json()); } catch {}
+    try {
+      const allOrders: OpenOrder[] = await ordRes.json();
+      setOpenOrders(allOrders.filter((o) => !o.paymentConfirmedAt && o.status !== "cancelled"));
+    } catch {}
     if (cats.length > 0 && !selectedCat) setSelectedCat(cats[0].id);
   }, [selectedCat]);
 
@@ -67,6 +88,7 @@ export default function PosPage() {
     setDeliveryAddress(c.address || "");
     setCustSearch("");
     setShowCustDropdown(false);
+    if (c.address) setOrderType("delivery");
   }
 
   function handleCustSearch(val: string) {
@@ -114,22 +136,67 @@ export default function PosPage() {
 
   const availableItems = items.filter((i) => i.isAvailable);
 
-  function handleItemClick(item: MenuItem) {
-    setCustomizeItem(item);
+  function getEffectivePrice(item: MenuItem): number {
+    if (orderType === "dine_in") return item.price;
+    return item.deliveryPrice || item.price;
   }
 
-  function handleCustomizedAdd(ci: CustomizedItem) {
-    const key = `${ci.menuItemId}_${ci.removedIngredients.sort().join(",")}_${ci.selectedExtras.sort().join(",")}_${ci.notes}`;
+  useEffect(() => {
+    if (cart.length === 0) return;
+    setCart((prev) =>
+      prev.map((c) => {
+        const menuItem = items.find((i) => i.id === c.menuItemId);
+        if (!menuItem) return c;
+        const base = orderType === "dine_in" ? menuItem.price : (menuItem.deliveryPrice || menuItem.price);
+        let extrasCost = 0;
+        for (const optId of c.selectedExtras) {
+          const opt = options.find((o) => o.id === optId);
+          if (opt && opt.priceModifier > 0) extrasCost += opt.priceModifier;
+        }
+        return { ...c, price: base + extrasCost };
+      })
+    );
+  }, [orderType]);
+
+  const [custRemoved, setCustRemoved] = useState<Set<string>>(new Set());
+  const [custExtras, setCustExtras] = useState<Set<number>>(new Set());
+  const [custQty, setCustQty] = useState(1);
+  const [custNotes, setCustNotes] = useState("");
+
+  function handleItemClick(item: MenuItem) {
+    if (customizeItem?.id === item.id) {
+      setCustomizeItem(null);
+      return;
+    }
+    const effectivePrice = getEffectivePrice(item);
+    setCustomizeItem({ ...item, price: effectivePrice });
+    setCustRemoved(new Set());
+    setCustExtras(new Set());
+    setCustQty(1);
+    setCustNotes("");
+  }
+
+  function addCustomizedToCart() {
+    if (!customizeItem) return;
+    const itemOpts = options.filter((o) => o.menuItemId === customizeItem.id);
+    const extrasCost = itemOpts
+      .filter((o) => o.groupName === "Ekstralar" && custExtras.has(o.id))
+      .reduce((sum, o) => sum + o.priceModifier, 0);
+    const finalPrice = customizeItem.price + extrasCost;
+    const removedArr = Array.from(custRemoved).sort();
+    const extrasArr = Array.from(custExtras).sort();
+    const key = `${customizeItem.id}_${removedArr.join(",")}_${extrasArr.join(",")}_${custNotes.trim()}`;
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
       if (existing) {
-        return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + ci.quantity } : c);
+        return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + custQty } : c);
       }
       return [...prev, {
-        key, menuItemId: ci.menuItemId, name: ci.name, price: ci.finalPrice, quantity: ci.quantity, imageUrl: ci.imageUrl,
-        removedIngredients: ci.removedIngredients, selectedExtras: ci.selectedExtras, notes: ci.notes,
+        key, menuItemId: customizeItem.id, name: customizeItem.name, price: finalPrice, quantity: custQty, imageUrl: customizeItem.imageUrl,
+        removedIngredients: removedArr, selectedExtras: extrasArr, notes: custNotes.trim(),
       }];
     });
+    setCustomizeItem(null);
   }
 
   function updateQty(key: string, delta: number) {
@@ -151,8 +218,10 @@ export default function PosPage() {
     if (cart.length === 0) return;
     setSending(true);
 
+    const source = (orderType === "delivery" || orderType === "takeaway") && customerPhone ? "phone" : "manual";
+
     const body: Record<string, unknown> = {
-      source: "manual",
+      source,
       customerName: customerName || undefined,
       customerPhone: customerPhone || undefined,
       notes: notes || undefined,
@@ -176,16 +245,51 @@ export default function PosPage() {
 
     if (res.ok) {
       const order = await res.json();
-      setLastOrder({ id: order.id, total: order.total });
+      setCompletedOrder({
+        id: order.id,
+        total: order.total,
+        subtotal,
+        deliveryFee,
+        orderType,
+        items: [...cart],
+        customerName,
+        tableNumber,
+      });
       setCart([]);
       setCustomerName("");
       setCustomerPhone("");
       setDeliveryAddress("");
       setTableNumber("");
       setNotes("");
-      setTimeout(() => setLastOrder(null), 5000);
+      setTimeout(() => setCompletedOrder(null), 3000);
     }
     setSending(false);
+  }
+
+  function closeConfirmModal() {
+    setCompletedOrder(null);
+  }
+
+  function printReceipt(orderId: number) {
+    window.open(`/receipt/${orderId}`, "_blank");
+  }
+
+  async function openBillDetail(orderId: number) {
+    const res = await fetch(`/api/orders/${orderId}`);
+    if (res.ok) setBillDetail(await res.json());
+  }
+
+  async function collectPayment(orderId: number, method: "cash" | "card") {
+    setPayingBill(true);
+    await fetch(`/api/orders/${orderId}/payment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentMethod: method }),
+    });
+    setPayingBill(false);
+    setBillDetail(null);
+    setShowBills(false);
+    load();
   }
 
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
@@ -201,7 +305,7 @@ export default function PosPage() {
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </a>
             <div>
-              <img src="/logo-header.png" alt="VAROSH" className="h-7" />
+              {ps.headerLogoUrl ? <img src={ps.headerLogoUrl} alt={ps.businessName} className="h-7 object-contain" /> : <span className="font-bold text-amber-400">{ps.businessName}</span>}
               <p className="text-white/20 text-[10px] tracking-wider">POS SISTEMI</p>
             </div>
           </div>
@@ -251,6 +355,118 @@ export default function PosPage() {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
                   {catItems.map((item) => {
                     const qty = cart.filter(c => c.menuItemId === item.id).reduce((s, c) => s + c.quantity, 0);
+                    const isExpanded = customizeItem?.id === item.id;
+                    const itemOpts = isExpanded ? options.filter((o) => o.menuItemId === item.id) : [];
+                    const ingredients = itemOpts.filter((o) => o.groupName === "Icindekiler");
+                    const extraOpts = itemOpts.filter((o) => o.groupName === "Ekstralar");
+                    const custExtrasCost = isExpanded ? extraOpts.filter((o) => custExtras.has(o.id)).reduce((s, o) => s + o.priceModifier, 0) : 0;
+                    const custTotal = isExpanded ? (customizeItem!.price + custExtrasCost) * custQty : 0;
+
+                    if (isExpanded) {
+                      return (
+                        <div key={item.id} className="col-span-2 bg-neutral-900 border-2 border-amber-500/60 rounded-2xl overflow-hidden shadow-xl shadow-amber-500/10">
+                          {/* Header: name + price + close */}
+                          <div className="flex items-center gap-3 px-3 py-2.5 border-b border-neutral-800/60">
+                            {item.imageUrl && (
+                              <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-bold text-white text-sm leading-tight truncate">{item.name}</h3>
+                            </div>
+                            <span className="text-amber-400 font-extrabold text-base shrink-0">{getEffectivePrice(item)} TL</span>
+                            <button
+                              onClick={() => setCustomizeItem(null)}
+                              className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 hover:text-white shrink-0"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+
+                          {/* Body: compact customization */}
+                          <div className="px-3 py-2.5 space-y-2">
+                            {/* Ingredients */}
+                            {ingredients.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-bold text-white/30 mb-1 uppercase tracking-wider">Icindekiler</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {ingredients.map((ing) => {
+                                    const isRem = custRemoved.has(ing.optionName);
+                                    return (
+                                      <button
+                                        key={ing.id}
+                                        onClick={() => setCustRemoved((prev) => { const n = new Set(prev); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                                          isRem
+                                            ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20"
+                                            : "bg-neutral-800 text-white/70 border border-neutral-700/50 hover:border-red-500/30"
+                                        }`}
+                                      >
+                                        {isRem && "✕ "}{ing.optionName}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Extras */}
+                            {extraOpts.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-bold text-white/30 mb-1 uppercase tracking-wider">Ekstralar</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {extraOpts.map((ext) => {
+                                    const isSel = custExtras.has(ext.id);
+                                    return (
+                                      <button
+                                        key={ext.id}
+                                        onClick={() => setCustExtras((prev) => { const n = new Set(prev); if (n.has(ext.id)) n.delete(ext.id); else n.add(ext.id); return n; })}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                                          isSel
+                                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                            : "bg-neutral-800 text-white/70 border border-neutral-700/50 hover:border-amber-500/30"
+                                        }`}
+                                      >
+                                        {ext.optionName} <span className={isSel ? "text-amber-400" : "text-white/30"}>+{ext.priceModifier}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Notes */}
+                            <input
+                              value={custNotes}
+                              onChange={(e) => setCustNotes(e.target.value)}
+                              placeholder="Not: Az pismis, bol soslu..."
+                              className="w-full bg-neutral-800/60 text-white rounded-lg px-2.5 py-1.5 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20"
+                            />
+
+                            {/* Qty + Add — left aligned */}
+                            <div className="flex items-center gap-3 pt-1">
+                              <div className="flex items-center bg-neutral-800 rounded-full">
+                                <button
+                                  onClick={() => setCustQty(Math.max(1, custQty - 1))}
+                                  className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700 text-sm font-bold"
+                                >−</button>
+                                <span className="text-white font-bold text-sm min-w-[22px] text-center">{custQty}</span>
+                                <button
+                                  onClick={() => setCustQty(custQty + 1)}
+                                  className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400 text-sm font-bold"
+                                >+</button>
+                              </div>
+                              <button
+                                onClick={addCustomizedToCart}
+                                className="px-4 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs active:scale-[0.97] transition-transform shadow-lg shadow-amber-500/20"
+                              >
+                                Ekle &middot; {custTotal.toFixed(0)} TL
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <button
                         key={item.id}
@@ -282,10 +498,12 @@ export default function PosPage() {
                             <p className="text-white/30 text-[11px] mb-2 line-clamp-1">{item.description}</p>
                           )}
                           <div className="flex items-baseline gap-2">
-                            <span className="text-amber-400 font-extrabold text-lg">{item.price}</span>
+                            <span className="text-amber-400 font-extrabold text-lg">{getEffectivePrice(item)}</span>
                             <span className="text-amber-400/60 text-xs font-semibold">TL</span>
                             {item.deliveryPrice && item.deliveryPrice !== item.price && (
-                              <span className="text-white/20 text-[10px] ml-auto">Paket {item.deliveryPrice} TL</span>
+                              <span className="text-white/20 text-[10px] ml-auto">
+                                {orderType === "dine_in" ? `Paket ${item.deliveryPrice}` : `Mekan ${item.price}`} TL
+                              </span>
                             )}
                           </div>
                         </div>
@@ -301,6 +519,17 @@ export default function PosPage() {
 
       {/* Right: Cart Panel */}
       <div className="w-[340px] bg-neutral-900 border-l border-neutral-800/60 flex flex-col">
+        {/* Open Bills Button */}
+        {openOrders.length > 0 && (
+          <button
+            onClick={() => setShowBills(true)}
+            className="mx-3 mt-3 py-2.5 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-400 font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+            Acik Hesaplar ({openOrders.length})
+          </button>
+        )}
+
         {/* Order Type */}
         <div className="flex gap-1 p-3 border-b border-neutral-800/60">
           {([["dine_in", "Masa", "🍽️"], ["takeaway", "Gel Al", "🛍️"], ["delivery", "Paket", "🛵"]] as const).map(([type, label, icon]) => (
@@ -450,10 +679,10 @@ export default function PosPage() {
 
         {/* Totals + Submit */}
         <div className="p-3 border-t border-neutral-800/60 bg-neutral-900/80">
-          {lastOrder && (
+          {completedOrder && (
             <div className="bg-green-500/10 text-green-400 rounded-xl p-3 mb-2 text-center text-sm font-bold border border-green-500/20 flex items-center justify-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-              Siparis #{lastOrder.id} — {lastOrder.total} TL
+              Siparis #{completedOrder.id} — {completedOrder.total} TL
             </div>
           )}
           <div className="space-y-1 mb-3">
@@ -490,13 +719,160 @@ export default function PosPage() {
         </div>
       </div>
 
-      {/* Customize Modal */}
-      <ItemCustomizeModal
-        item={customizeItem}
-        options={options}
-        onClose={() => setCustomizeItem(null)}
-        onAdd={handleCustomizedAdd}
-      />
+
+      {/* Order Success Toast */}
+      {completedOrder && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div
+            onClick={closeConfirmModal}
+            className="bg-green-600 text-white rounded-2xl px-6 py-4 shadow-2xl shadow-green-600/30 flex items-center gap-3 cursor-pointer"
+          >
+            <svg className="w-6 h-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+            <div>
+              <p className="font-bold">Siparis #{completedOrder.id} mutfaga gonderildi</p>
+              <p className="text-green-100 text-sm">{completedOrder.total.toFixed(0)} TL — {
+                completedOrder.orderType === "dine_in" ? (completedOrder.tableNumber ? `Masa ${completedOrder.tableNumber}` : "Mekan") :
+                completedOrder.orderType === "delivery" ? "Paket" : "Gel Al"
+              }</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Open Bills Modal */}
+      {showBills && !billDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowBills(false)}>
+          <div className="bg-neutral-900 rounded-2xl w-full max-w-md mx-4 max-h-[85vh] flex flex-col border border-neutral-700/50 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-neutral-800/60 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">Acik Hesaplar</h2>
+              <button onClick={() => setShowBills(false)} className="text-white/30 hover:text-white">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {openOrders.length === 0 && (
+                <p className="text-center text-white/20 py-10">Acik hesap yok</p>
+              )}
+              {openOrders.map((o) => {
+                const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
+                return (
+                  <button
+                    key={o.id}
+                    onClick={() => openBillDetail(o.id)}
+                    className="w-full bg-neutral-800/60 hover:bg-neutral-800 rounded-xl p-3.5 text-left transition-all active:scale-[0.98] border border-neutral-700/30"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">#{o.id}</span>
+                        {o.tableNumber && (
+                          <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">Masa {o.tableNumber}</span>
+                        )}
+                        {o.deliveryAddress && (
+                          <span className="text-xs bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded">Paket</span>
+                        )}
+                        {!o.tableNumber && !o.deliveryAddress && (
+                          <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded">Gel Al</span>
+                        )}
+                      </div>
+                      <span className="text-amber-400 font-extrabold">{o.total.toFixed(0)} TL</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/40 text-xs">{o.customerName || "Isimsiz"}{o.customerPhone ? ` • ${o.customerPhone}` : ""}</span>
+                      <span className="text-white/20 text-xs">{mins}dk once</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bill Detail + Payment Modal */}
+      {billDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-neutral-900 rounded-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col border border-neutral-700/50 shadow-2xl">
+            <div className="p-4 border-b border-neutral-800/60 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Hesap #{billDetail.id}</h2>
+                <p className="text-white/40 text-xs mt-0.5">
+                  {billDetail.tableNumber ? `Masa ${billDetail.tableNumber}` : billDetail.customerName || ""}
+                </p>
+              </div>
+              <button onClick={() => setBillDetail(null)} className="text-white/30 hover:text-white">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-2">
+                {billDetail.items.map((item, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/50 text-sm font-bold">{item.quantity}x</span>
+                        <span className="text-white text-sm font-medium truncate">{item.name}</span>
+                      </div>
+                      {item.removed.length > 0 && (
+                        <p className="text-red-400/60 text-[11px] ml-7">- {item.removed.join(", ")}</p>
+                      )}
+                      {item.extras.length > 0 && (
+                        <p className="text-amber-400/60 text-[11px] ml-7">+ {item.extras.map((e) => e.name).join(", ")}</p>
+                      )}
+                      {item.notes && (
+                        <p className="text-blue-400/50 text-[11px] ml-7 italic">{item.notes}</p>
+                      )}
+                    </div>
+                    <span className="text-white/70 text-sm font-semibold shrink-0">{item.totalPrice.toFixed(0)} TL</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-3 border-t border-neutral-800/60 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/40">Ara Toplam</span>
+                  <span className="text-white/60">{billDetail.subtotal.toFixed(0)} TL</span>
+                </div>
+                {billDetail.deliveryFee > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/40">Teslimat</span>
+                    <span className="text-white/60">{billDetail.deliveryFee.toFixed(0)} TL</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-2xl font-extrabold pt-2">
+                  <span className="text-white">Toplam</span>
+                  <span className="text-amber-400">{billDetail.total.toFixed(0)} TL</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-neutral-800/60 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => collectPayment(billDetail.id, "cash")}
+                  disabled={payingBill}
+                  className="py-4 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-base transition-all active:scale-[0.97] disabled:opacity-40"
+                >
+                  Nakit
+                </button>
+                <button
+                  onClick={() => collectPayment(billDetail.id, "card")}
+                  disabled={payingBill}
+                  className="py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-base transition-all active:scale-[0.97] disabled:opacity-40"
+                >
+                  Kart
+                </button>
+              </div>
+              <button
+                onClick={() => printReceipt(billDetail.id)}
+                className="w-full py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/60 font-medium text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                Fis Yazdir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

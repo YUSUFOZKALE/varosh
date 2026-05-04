@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { getBusinessName } from "@/lib/settings";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -12,16 +13,19 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-export const metadata: Metadata = {
-  title: "Varosh Streetfood",
-  description: "Restoran Yonetim Sistemi",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Varosh",
-  },
-};
+export function generateMetadata(): Metadata {
+  const name = getBusinessName();
+  return {
+    title: name,
+    description: "Restoran Yonetim Sistemi",
+    manifest: "/manifest.json",
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "black-translucent",
+      title: name,
+    },
+  };
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface Extra { id: number; name: string; price: number }
 interface OrderItem {
@@ -35,6 +36,7 @@ export default function ReceiptPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState("");
   const printed = useRef(false);
+  const ps = usePublicSettings();
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/orders/${id}`);
@@ -92,8 +94,8 @@ export default function ReceiptPage() {
       <div className="receipt max-w-[80mm] mx-auto bg-white text-black p-4 font-mono text-xs leading-relaxed">
         {/* Header */}
         <div className="text-center mb-2">
-          <h1 className="text-lg font-bold tracking-wider">VAROSH</h1>
-          <p className="text-[10px] text-gray-500">STREET FOOD - KADIRLI</p>
+          <h1 className="text-lg font-bold tracking-wider">{ps.businessName.toUpperCase()}</h1>
+          {ps.businessAddress && <p className="text-[10px] text-gray-500">{ps.businessAddress}</p>}
         </div>
 
         <div className="border-t-2 border-black my-2" />
@@ -220,9 +222,9 @@ export default function ReceiptPage() {
 
         <div className="text-center text-[10px] text-gray-400">
           <p>Afiyet olsun!</p>
-          <p>VAROSH STREET FOOD</p>
-          <p>Cemaliye Mah. Adliye Cad. Kadirli/Osmaniye</p>
-          <p>Tel: 0542 190 06 62</p>
+          <p>{ps.businessName.toUpperCase()}</p>
+          {ps.businessAddress && <p>{ps.businessAddress}</p>}
+          {ps.businessPhone && <p>Tel: {ps.businessPhone}</p>}
         </div>
       </div>
     </>

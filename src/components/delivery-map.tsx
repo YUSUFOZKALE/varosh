@@ -3,14 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-
-const KADIRLI_CENTER: [number, number] = [37.3730, 36.0761];
-const SHOP_LOCATION: [number, number] = [37.3730, 36.0761];
-
-const KADIRLI_BOUNDS: L.LatLngBoundsExpression = [
-  [37.34, 36.04],
-  [37.41, 36.12],
-];
+import { usePublicSettings } from "@/hooks/use-public-settings";
 
 interface DeliveryPoint {
   id: number;
@@ -52,22 +45,23 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function DeliveryMap({ deliveries, selectedIds, onToggleSelect, onSetLocation, routeOrder, customers = [], radiusKm }: Props) {
+  const ps = usePublicSettings();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const routeRef = useRef<L.Polyline | null>(null);
   const radiusRef = useRef<L.Circle | null>(null);
   const [placingOrderId, setPlacingOrderId] = useState<number | null>(null);
+  const shopLocation: [number, number] = [ps.shopLatitude, ps.shopLongitude];
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
     const map = L.map(mapRef.current, {
-      maxBounds: KADIRLI_BOUNDS,
       maxBoundsViscosity: 0.9,
       minZoom: 13,
       maxZoom: 18,
-    }).setView(KADIRLI_CENTER, 15);
+    }).setView(shopLocation, 15);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -80,9 +74,9 @@ export default function DeliveryMap({ deliveries, selectedIds, onToggleSelect, o
       iconSize: [24, 24],
       iconAnchor: [12, 12],
     });
-    L.marker(SHOP_LOCATION, { icon: shopIcon })
+    L.marker(shopLocation, { icon: shopIcon })
       .addTo(map)
-      .bindPopup("<b>Varosh Streetfood</b><br/><small>Kadirli Merkez, Osmaniye</small>");
+      .bindPopup(`<b>${ps.businessName}</b><br/><small>${ps.businessAddress}</small>`);
 
     markersRef.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
@@ -160,14 +154,14 @@ export default function DeliveryMap({ deliveries, selectedIds, onToggleSelect, o
     }
 
     if (routeOrder.length > 0) {
-      const points: [number, number][] = [SHOP_LOCATION];
+      const points: [number, number][] = [shopLocation];
       for (const id of routeOrder) {
         const d = deliveries.find((x) => x.id === id);
         if (d?.deliveryLatitude && d?.deliveryLongitude) {
           points.push([d.deliveryLatitude, d.deliveryLongitude]);
         }
       }
-      points.push(SHOP_LOCATION);
+      points.push(shopLocation);
 
       routeRef.current = L.polyline(points, {
         color: "#f59e0b",
@@ -185,7 +179,7 @@ export default function DeliveryMap({ deliveries, selectedIds, onToggleSelect, o
       radiusRef.current = null;
     }
     if (radiusKm && radiusKm > 0) {
-      radiusRef.current = L.circle(SHOP_LOCATION, {
+      radiusRef.current = L.circle(shopLocation, {
         radius: radiusKm * 1000,
         color: "#f59e0b",
         fillColor: "#f59e0b",
