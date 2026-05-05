@@ -138,7 +138,9 @@
       "PowerShell(Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/c cd /d C:\\\\Users\\\\yusuf\\\\OneDrive\\\\Desktop\\\\varosh && npx next dev --hostname 0.0.0.0 --port 3000\" -WindowStyle Hidden; \"Started fresh dev server\")",
       "PowerShell(@\\(\"menu\", \"pos\"\\) | ForEach-Object { try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/_next/static/chunks/app/\\(admin\\)/$_/page.js\" -UseBasicParsing -TimeoutSec 10; \"$_ page JS: OK \\($\\($r.Content.Length\\) bytes\\)\" } catch { \"$_ page JS: FAIL\" } }; try { $r2 = Invoke-WebRequest -Uri \"http://localhost:3000/_next/static/chunks/app/\\(waiter\\)/waiter/page.js\" -UseBasicParsing -TimeoutSec 10; \"waiter page JS: OK \\($\\($r2.Content.Length\\) bytes\\)\" } catch { \"waiter page JS: FAIL\" }; try { $r3 = Invoke-WebRequest -Uri \"http://localhost:3000/_next/static/chunks/app/\\(pos\\)/pos/page.js\" -UseBasicParsing -TimeoutSec 10; \"pos page JS: OK \\($\\($r3.Content.Length\\) bytes\\)\" } catch { \"pos page JS: FAIL\" })",
       "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://192.168.18.5:3000/api/menu/items\" -UseBasicParsing -TimeoutSec 5; \"LAN Menu API: $\\($r.StatusCode\\), $\\(\\($r.Content | ConvertFrom-Json\\).Count\\) items\" } catch { \"LAN access: FAIL - $\\($_.Exception.Message\\)\" })",
-      "PowerShell(Start-Sleep -Seconds 5; try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/api/menu/items\" -UseBasicParsing -TimeoutSec 5; \"API OK: $\\(\\($r.Content | ConvertFrom-Json\\).Count\\) items\" } catch { \"API FAIL\" })"
+      "PowerShell(Start-Sleep -Seconds 5; try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/api/menu/items\" -UseBasicParsing -TimeoutSec 5; \"API OK: $\\(\\($r.Content | ConvertFrom-Json\\).Count\\) items\" } catch { \"API FAIL\" })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/api/menu/categories\" -UseBasicParsing -TimeoutSec 5; \"OK: $\\($r.Content.Substring\\(0,200\\)\\)\" } catch { \"Status: $\\($_.Exception.Response.StatusCode\\) - $\\($_.Exception.Message\\)\" })",
+      "Bash(curl *)"
     ]
   }
 }
