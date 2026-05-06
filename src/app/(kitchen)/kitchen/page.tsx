@@ -212,10 +212,10 @@ export default function KitchenPage() {
   return (
     <div className="min-h-screen bg-surface p-3">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 px-1">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 px-1 gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-lg font-bold text-accent">MUTFAK</h1>
-          <div className="flex gap-3 text-sm">
+          <div className="flex gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
               <span className="text-blue-400 font-medium">{newOrders.length} Yeni</span>
@@ -230,7 +230,7 @@ export default function KitchenPage() {
             </span>
           </div>
         </div>
-        <span className="text-white/20 text-xs">Otomatik yenileme (5s)</span>
+        <span className="text-white/20 text-xs hidden sm:inline">Otomatik yenileme (5s)</span>
       </div>
 
       {/* 3-Column Layout: New | Preparing | Ready */}

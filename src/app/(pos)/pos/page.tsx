@@ -35,8 +35,8 @@ export default function PosPage() {
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<CompletedOrder | null>(null);
+  const [mobileTab, setMobileTab] = useState<"menu" | "cart">("menu");
 
-  // Acik Hesaplar (Open Bills)
   interface OpenOrder { id: number; customerName: string | null; customerPhone: string | null; tableNumber: number | null; total: number; status: string; source: string; paymentConfirmedAt: string | null; createdAt: string; deliveryAddress: string | null; }
   interface BillDetail { id: number; customerName: string | null; tableNumber: number | null; total: number; subtotal: number; deliveryFee: number; source: string; items: { name: string; quantity: number; unitPrice: number; totalPrice: number; extras: { id: number; name: string; price: number }[]; removed: string[]; notes: string | null }[]; }
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
@@ -205,6 +205,10 @@ export default function PosPage() {
     setCustomizeItem(null);
   }
 
+  function switchToMenu() {
+    if (window.innerWidth < 768) setMobileTab("menu");
+  }
+
   function updateQty(key: string, delta: number) {
     setCart((prev) => prev
       .map((c) => c.key === key ? { ...c, quantity: c.quantity + delta } : c)
@@ -274,6 +278,7 @@ export default function PosPage() {
       setTableNumber("");
       setNotes("");
       toast.success(`Siparis #${order.id} basariyla olusturuldu`);
+      switchToMenu();
       setTimeout(() => setCompletedOrder(null), 3000);
     } catch {
       toast.error("Siparis gonderilirken bir hata olustu");
@@ -320,12 +325,23 @@ export default function PosPage() {
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   return (
-    <div className="flex h-screen bg-neutral-950">
+    <div className="flex flex-col md:flex-row h-screen bg-neutral-950">
       <ToastContainer toasts={toast.toasts} />
+
+      {/* Mobile Tab Bar */}
+      <div className="md:hidden flex border-b border-neutral-800/60 shrink-0">
+        <button onClick={() => setMobileTab("menu")} className={`flex-1 py-3 text-sm font-bold text-center transition-all ${mobileTab === "menu" ? "text-amber-400 border-b-2 border-amber-400" : "text-white/40"}`}>
+          🍽️ Menü
+        </button>
+        <button onClick={() => setMobileTab("cart")} className={`flex-1 py-3 text-sm font-bold text-center transition-all relative ${mobileTab === "cart" ? "text-amber-400 border-b-2 border-amber-400" : "text-white/40"}`}>
+          🛒 Sepet {cartCount > 0 && <span className="ml-1 bg-amber-500 text-black text-[10px] px-1.5 py-0.5 rounded-full">{cartCount}</span>}
+        </button>
+      </div>
+
       {/* Left: Menu */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className={`flex-1 flex flex-col overflow-hidden ${mobileTab !== "menu" ? "hidden md:flex" : ""}`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
           <div className="flex items-center gap-3">
             <a href="/" className="text-white/30 hover:text-white/60 transition-colors">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -335,11 +351,13 @@ export default function PosPage() {
               <p className="text-white/20 text-[10px] tracking-wider">POS SISTEMI</p>
             </div>
           </div>
-          {cartCount > 0 && (
-            <div className="bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-full text-xs font-bold">
-              {cartCount} urun
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {cartCount > 0 && (
+              <button onClick={() => setMobileTab("cart")} className="md:pointer-events-none bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-full text-xs font-bold">
+                {cartCount} ürün
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Category Tabs */}
@@ -497,7 +515,7 @@ export default function PosPage() {
       </div>
 
       {/* Right: Cart Panel */}
-      <div className="w-[340px] bg-neutral-900 border-l border-neutral-800/60 flex flex-col">
+      <div className={`w-full md:w-[340px] bg-neutral-900 md:border-l border-neutral-800/60 flex flex-col ${mobileTab !== "cart" ? "hidden md:flex" : ""}`}>
         {/* Open Bills Button */}
         {openOrders.length > 0 && (
           <button
@@ -728,40 +746,78 @@ export default function PosPage() {
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {openOrders.length === 0 && (
                 <p className="text-center text-white/20 py-10">Acik hesap yok</p>
               )}
-              {openOrders.map((o) => {
-                const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
+              {(() => {
+                const tableGroups: Record<number, OpenOrder[]> = {};
+                const otherOrders: OpenOrder[] = [];
+                for (const o of openOrders) {
+                  if (o.tableNumber) {
+                    if (!tableGroups[o.tableNumber]) tableGroups[o.tableNumber] = [];
+                    tableGroups[o.tableNumber].push(o);
+                  } else {
+                    otherOrders.push(o);
+                  }
+                }
                 return (
-                  <button
-                    key={o.id}
-                    onClick={() => openBillDetail(o.id)}
-                    className="w-full bg-neutral-800/60 hover:bg-neutral-800 rounded-xl p-3.5 text-left transition-all active:scale-[0.98] border border-neutral-700/30"
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-sm">#{o.id}</span>
-                        {o.tableNumber && (
-                          <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">Masa {o.tableNumber}</span>
-                        )}
-                        {o.deliveryAddress && (
-                          <span className="text-xs bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded">Paket</span>
-                        )}
-                        {!o.tableNumber && !o.deliveryAddress && (
-                          <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded">Gel Al</span>
-                        )}
-                      </div>
-                      <span className="text-amber-400 font-extrabold">{o.total.toFixed(0)} TL</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-white/40 text-xs">{o.customerName || "Isimsiz"}{o.customerPhone ? ` • ${o.customerPhone}` : ""}</span>
-                      <span className="text-white/20 text-xs">{mins}dk once</span>
-                    </div>
-                  </button>
+                  <>
+                    {Object.entries(tableGroups).map(([tbl, orders]) => {
+                      const groupTotal = orders.reduce((s, o) => s + o.total, 0);
+                      return (
+                        <div key={`t${tbl}`} className="bg-purple-500/5 border border-purple-500/20 rounded-xl overflow-hidden">
+                          <div className="px-3.5 py-2.5 bg-purple-500/10 flex items-center justify-between">
+                            <span className="font-bold text-purple-300 text-sm">🍽️ Masa {tbl} <span className="text-purple-400/50 font-normal">({orders.length} sipariş)</span></span>
+                            <span className="text-amber-400 font-extrabold text-sm">{groupTotal.toFixed(0)} TL</span>
+                          </div>
+                          <div className="divide-y divide-neutral-800/40">
+                            {orders.map((o) => {
+                              const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
+                              return (
+                                <button key={o.id} onClick={() => openBillDetail(o.id)} className="w-full px-3.5 py-2.5 text-left hover:bg-neutral-800/40 transition-all active:scale-[0.98]">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-white text-sm">#{o.id}</span>
+                                      <span className="text-white/40 text-xs">{o.customerName || "Isimsiz"}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-amber-400 font-bold text-sm">{o.total.toFixed(0)} TL</span>
+                                      <span className="text-white/20 text-xs">{mins}dk</span>
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {otherOrders.map((o) => {
+                      const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
+                      return (
+                        <button key={o.id} onClick={() => openBillDetail(o.id)} className="w-full bg-neutral-800/60 hover:bg-neutral-800 rounded-xl p-3.5 text-left transition-all active:scale-[0.98] border border-neutral-700/30">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-sm">#{o.id}</span>
+                              {o.deliveryAddress ? (
+                                <span className="text-xs bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded">Paket</span>
+                              ) : (
+                                <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded">Gel Al</span>
+                              )}
+                            </div>
+                            <span className="text-amber-400 font-extrabold">{o.total.toFixed(0)} TL</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-white/40 text-xs">{o.customerName || "Isimsiz"}{o.customerPhone ? ` • ${o.customerPhone}` : ""}</span>
+                            <span className="text-white/20 text-xs">{mins}dk once</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </>
                 );
-              })}
+              })()}
             </div>
           </div>
         </div>

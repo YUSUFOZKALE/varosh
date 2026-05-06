@@ -562,11 +562,11 @@ export default function CashierPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h2 className="text-2xl font-bold">Kasa</h2>
-        <div className="flex gap-1 bg-surface-2 rounded-xl p-1">
+        <div className="flex gap-1 bg-surface-2 rounded-xl p-1 overflow-x-auto">
           {([["orders", "Siparisler"], ["expenses", "Giderler"], ["register", "Kasa"], ["zreport", "Z Raporu"]] as [Tab, string][]).map(([t, label]) => (
-            <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? "bg-accent text-black" : "text-white/40 hover:text-white"}`}>
+            <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${tab === t ? "bg-accent text-black" : "text-white/40 hover:text-white"}`}>
               {label}
               {t === "orders" && totalBadge > 0 && <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5">{totalBadge}</span>}
             </button>
@@ -670,12 +670,12 @@ export default function CashierPage() {
 
             {/* KURYE HESABI */}
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
                   Kurye Hesabi
                   {courierGroups.length > 0 && <span className="bg-orange-500/20 text-orange-400 text-xs px-2 py-0.5 rounded-full">{courierGroups.reduce((s, g) => s + g.orders.length, 0)}</span>}
                 </h3>
-                <button onClick={() => setCourierAdvanceModal(true)} className="px-3 py-1.5 bg-orange-600/20 text-orange-400 rounded-lg text-xs font-medium hover:bg-orange-600/30">
+                <button onClick={() => setCourierAdvanceModal(true)} className="px-3 py-1.5 bg-orange-600/20 text-orange-400 rounded-lg text-xs font-medium hover:bg-orange-600/30 self-start sm:self-auto">
                   Kuryeye Nakit Ver
                 </button>
               </div>
@@ -718,11 +718,11 @@ export default function CashierPage() {
                     </div>
 
                     {selectedTotal > 0 && (
-                      <div className="grid grid-cols-2 gap-2 mt-3">
-                        <button onClick={() => collectCourierCash("cash")} className="py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm transition-all active:scale-[0.97]">
+                      <div className="grid grid-cols-2 gap-1.5 sm:gap-2 mt-3">
+                        <button onClick={() => collectCourierCash("cash")} className="py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.97]">
                           Nakit Tahsil {selectedTotal.toFixed(0)} TL
                         </button>
-                        <button onClick={() => collectCourierCash("card")} className="py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all active:scale-[0.97]">
+                        <button onClick={() => collectCourierCash("card")} className="py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.97]">
                           Kart Tahsil {selectedTotal.toFixed(0)} TL
                         </button>
                       </div>
@@ -740,20 +740,20 @@ export default function CashierPage() {
       {selectedTable && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setSelectedTable(null)}>
           <div className="bg-neutral-900 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-neutral-800/60 flex items-center justify-between shrink-0">
-              <div>
-                <h3 className="text-lg font-bold text-white">Masa {selectedTable.session.tableNumber} Hesabi</h3>
+            <div className="p-4 sm:p-5 border-b border-neutral-800/60 flex items-center justify-between shrink-0 gap-2">
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-bold text-white">Masa {selectedTable.session.tableNumber} Hesabi</h3>
                 <p className="text-white/30 text-xs">{selectedTable.orders.length} siparis &middot; {new Date(selectedTable.session.openedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} dan beri</p>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => openAddItem(selectedTable.session.tableNumber)} className="px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-600/30">+ Urun Ekle</button>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => openAddItem(selectedTable.session.tableNumber)} className="px-2 sm:px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-600/30">+ Urun Ekle</button>
                 <button onClick={() => setSelectedTable(null)} className="w-8 h-8 bg-neutral-800 rounded-full flex items-center justify-center text-white/40 hover:text-white">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
               {selectedTable.orders.map((order) => (
                 <div key={order.id} className={`rounded-xl p-4 ${order.paymentMethod ? "bg-green-900/10 border border-green-800/30" : "bg-neutral-800/30"}`}>
                   <div className="flex items-center justify-between mb-2">
@@ -790,7 +790,7 @@ export default function CashierPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-white/40 text-xs">{item.totalPrice.toFixed(0)} TL</span>
                         {!order.paymentMethod && (
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                             <button onClick={() => updateItemQty(order.id, item.id, item.quantity - 1)} className="w-5 h-5 bg-neutral-700 rounded text-white/40 hover:text-white text-xs flex items-center justify-center">-</button>
                             <button onClick={() => updateItemQty(order.id, item.id, item.quantity + 1)} className="w-5 h-5 bg-neutral-700 rounded text-white/40 hover:text-white text-xs flex items-center justify-center">+</button>
                             <button onClick={() => removeItem(order.id, item.id)} className="w-5 h-5 bg-red-900/50 rounded text-red-400/60 hover:text-red-400 text-xs flex items-center justify-center">×</button>
@@ -839,7 +839,7 @@ export default function CashierPage() {
             </div>
 
             {/* Table summary + pay all */}
-            <div className="shrink-0 border-t border-neutral-800/60 p-5 space-y-3">
+            <div className="shrink-0 border-t border-neutral-800/60 p-4 sm:p-5 space-y-3">
               {/* Hesap vs Tahsil summary */}
               <div className="bg-neutral-800/40 rounded-xl p-3 space-y-1.5">
                 <div className="flex justify-between text-sm">
@@ -889,9 +889,9 @@ export default function CashierPage() {
                   {payMethod === "cash" && receivedCash && parseFloat(receivedCash) > parseFloat(chargedAmount || "0") && (
                     <p className="text-green-400/70 text-xs text-center">Para ustu: {(parseFloat(receivedCash) - parseFloat(chargedAmount || "0")).toFixed(0)} TL</p>
                   )}
-                  <div className="grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => { const ids = selectedTable.orders.map((o) => o.id); if (ids[0]) window.open(`/receipt/${ids[0]}`, "_blank"); }} className="py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/50 font-medium text-sm">Yazdir</button>
-                    <button type="button" onClick={() => setSelectedTable(null)} className="py-2.5 rounded-xl bg-neutral-800 text-white/30 font-medium text-sm">Kapat</button>
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                    <button type="button" onClick={() => { const ids = selectedTable.orders.map((o) => o.id); if (ids[0]) window.open(`/receipt/${ids[0]}`, "_blank"); }} className="py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/50 font-medium text-xs sm:text-sm">Yazdir</button>
+                    <button type="button" onClick={() => setSelectedTable(null)} className="py-2.5 rounded-xl bg-neutral-800 text-white/30 font-medium text-xs sm:text-sm">Kapat</button>
                     <Button onClick={payTable}>Tumunu Tahsil Et</Button>
                   </div>
                 </>
@@ -940,7 +940,7 @@ export default function CashierPage() {
             {payMethod === "cash" && receivedCash && parseFloat(receivedCash) > parseFloat(chargedAmount || "0") && (
               <p className="text-green-400/70 text-[11px] text-center">Para ustu: {(parseFloat(receivedCash) - parseFloat(chargedAmount || "0")).toFixed(0)} TL</p>
             )}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               <button type="button" onClick={() => window.open(`/receipt/${payingOrder.id}`, "_blank")} className="py-2.5 rounded-xl bg-neutral-800 text-white/50 font-medium text-xs">Yazdir</button>
               <button type="button" onClick={() => setPayingOrder(null)} className="py-2.5 rounded-xl bg-neutral-800 text-white/30 font-medium text-xs">Iptal</button>
               <Button onClick={payPackage}>Tahsil Et</Button>
@@ -990,10 +990,10 @@ export default function CashierPage() {
       {/* ══════════ EXPENSES TAB ══════════ */}
       {tab === "expenses" && (
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} className="bg-surface-2 rounded-lg px-3 py-1.5 text-sm text-white border border-border" />
-              <div className="flex gap-4 text-sm">
+              <div className="flex gap-3 text-sm flex-wrap">
                 <span className="text-red-400">Gider: {expenses.totals.expense.toFixed(0)} TL</span>
                 <span className="text-green-400">Gelir: {expenses.totals.income.toFixed(0)} TL</span>
                 <span className={expenses.totals.net >= 0 ? "text-green-400" : "text-red-400"}>Net: {expenses.totals.net.toFixed(0)} TL</span>
@@ -1001,19 +1001,19 @@ export default function CashierPage() {
             </div>
             <Button onClick={() => setExpenseModal(true)}>+ Gider Ekle</Button>
           </div>
-          <div className="card overflow-hidden p-0">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-border text-white/40 text-xs"><th className="px-4 py-3 text-left">Tarih</th><th className="px-4 py-3 text-left">Kategori</th><th className="px-4 py-3 text-left">Aciklama</th><th className="px-4 py-3 text-right">Tutar</th></tr></thead>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full text-sm min-w-[500px]">
+              <thead><tr className="border-b border-border text-white/40 text-xs"><th className="px-3 md:px-4 py-3 text-left">Tarih</th><th className="px-3 md:px-4 py-3 text-left">Kategori</th><th className="px-3 md:px-4 py-3 text-left">Aciklama</th><th className="px-3 md:px-4 py-3 text-right">Tutar</th></tr></thead>
               <tbody className="divide-y divide-border">
                 {expenses.entries.map((e) => (
                   <tr key={e.id} className="hover:bg-surface-2">
-                    <td className="px-4 py-3 text-white/40 text-xs">{e.date}</td>
-                    <td className="px-4 py-3 font-medium">{e.category}</td>
-                    <td className="px-4 py-3 text-white/50">{e.description || "-"}</td>
-                    <td className={`px-4 py-3 text-right font-semibold ${e.type === "expense" ? "text-red-400" : "text-green-400"}`}>{e.type === "expense" ? "-" : "+"}{e.amount.toFixed(0)} TL</td>
+                    <td className="px-3 md:px-4 py-3 text-white/40 text-xs">{e.date}</td>
+                    <td className="px-3 md:px-4 py-3 font-medium">{e.category}</td>
+                    <td className="px-3 md:px-4 py-3 text-white/50">{e.description || "-"}</td>
+                    <td className={`px-3 md:px-4 py-3 text-right font-semibold ${e.type === "expense" ? "text-red-400" : "text-green-400"}`}>{e.type === "expense" ? "-" : "+"}{e.amount.toFixed(0)} TL</td>
                   </tr>
                 ))}
-                {expenses.entries.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-white/30">Bu tarihte gider yok</td></tr>}
+                {expenses.entries.length === 0 && <tr><td colSpan={4} className="px-3 md:px-4 py-8 text-center text-white/30">Bu tarihte gider yok</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1023,26 +1023,26 @@ export default function CashierPage() {
       {/* ══════════ CASH REGISTER TAB ══════════ */}
       {tab === "register" && (
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-surface-2 rounded-xl px-6 py-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="bg-surface-2 rounded-xl px-4 sm:px-6 py-3">
               <span className="text-white/40 text-sm">Kasa Bakiyesi</span>
-              <p className="text-3xl font-bold text-accent">{register.balance.toFixed(0)} TL</p>
+              <p className="text-2xl sm:text-3xl font-bold text-accent">{register.balance.toFixed(0)} TL</p>
             </div>
             <Button onClick={() => setAddCashModal(true)}>+ Hareket Ekle</Button>
           </div>
-          <div className="card overflow-hidden p-0">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-border text-white/40 text-xs"><th className="px-4 py-3 text-left">Saat</th><th className="px-4 py-3 text-left">Tur</th><th className="px-4 py-3 text-left">Aciklama</th><th className="px-4 py-3 text-right">Tutar</th></tr></thead>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full text-sm min-w-[500px]">
+              <thead><tr className="border-b border-border text-white/40 text-xs"><th className="px-3 md:px-4 py-3 text-left">Saat</th><th className="px-3 md:px-4 py-3 text-left">Tur</th><th className="px-3 md:px-4 py-3 text-left">Aciklama</th><th className="px-3 md:px-4 py-3 text-right">Tutar</th></tr></thead>
               <tbody className="divide-y divide-border">
                 {register.movements.map((m) => (
                   <tr key={m.id} className="hover:bg-surface-2">
-                    <td className="px-4 py-3 text-white/40">{m.createdAt.split(" ")[1]?.slice(0, 5)}</td>
-                    <td className={`px-4 py-3 font-medium ${TYPE_COLORS[m.type] || ""}`}>{TYPE_LABELS[m.type] || m.type}</td>
-                    <td className="px-4 py-3 text-white/50">{m.description || "-"}</td>
-                    <td className={`px-4 py-3 text-right font-semibold ${["refund", "withdrawal"].includes(m.type) ? "text-red-400" : "text-green-400"}`}>{["refund", "withdrawal"].includes(m.type) ? "-" : "+"}{m.amount.toFixed(0)} TL</td>
+                    <td className="px-3 md:px-4 py-3 text-white/40">{m.createdAt.split(" ")[1]?.slice(0, 5)}</td>
+                    <td className={`px-3 md:px-4 py-3 font-medium ${TYPE_COLORS[m.type] || ""}`}>{TYPE_LABELS[m.type] || m.type}</td>
+                    <td className="px-3 md:px-4 py-3 text-white/50">{m.description || "-"}</td>
+                    <td className={`px-3 md:px-4 py-3 text-right font-semibold ${["refund", "withdrawal"].includes(m.type) ? "text-red-400" : "text-green-400"}`}>{["refund", "withdrawal"].includes(m.type) ? "-" : "+"}{m.amount.toFixed(0)} TL</td>
                   </tr>
                 ))}
-                {register.movements.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-white/30">Bugun hareket yok</td></tr>}
+                {register.movements.length === 0 && <tr><td colSpan={4} className="px-3 md:px-4 py-8 text-center text-white/30">Bugun hareket yok</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1057,19 +1057,21 @@ export default function CashierPage() {
             <input type="date" value={zDate} onChange={(e) => setZDate(e.target.value)} className="bg-surface-2 rounded-lg px-3 py-1 text-sm text-white border border-border" />
             <button onClick={() => { const d = new Date(zDate); d.setDate(d.getDate() + 1); setZDate(d.toISOString().split("T")[0]); }} className="px-3 py-1 bg-surface-2 rounded-lg text-white/40 hover:text-white">&rarr;</button>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="card text-center"><p className="text-3xl font-bold">{zReport.orders.totalOrders}</p><p className="text-xs text-white/40">Toplam Siparis</p></div>
-            <div className="card text-center"><p className="text-3xl font-bold text-white/50">{zReport.orders.totalRevenue.toFixed(0)}</p><p className="text-xs text-white/40">Hesap Toplam (TL)</p></div>
-            <div className="card text-center"><p className="text-3xl font-bold text-green-400">{zReport.orders.totalCollected.toFixed(0)}</p><p className="text-xs text-white/40">Tahsil Edilen (TL)</p></div>
-            <div className="card text-center"><p className="text-3xl font-bold text-orange-400">{zReport.orders.totalDiscount.toFixed(0)}</p><p className="text-xs text-white/40">Indirim (TL)</p></div>
-            <div className="card text-center"><p className="text-3xl font-bold text-red-400">{zReport.orders.cancelledOrders || 0}</p><p className="text-xs text-white/40">Iptal</p></div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
+            <div className="card text-center"><p className="text-xl sm:text-3xl font-bold">{zReport.orders.totalOrders}</p><p className="text-[10px] sm:text-xs text-white/40">Toplam Siparis</p></div>
+            <div className="card text-center"><p className="text-xl sm:text-3xl font-bold text-white/50">{zReport.orders.totalRevenue.toFixed(0)}</p><p className="text-[10px] sm:text-xs text-white/40">Hesap Toplam (TL)</p></div>
+            <div className="card text-center"><p className="text-xl sm:text-3xl font-bold text-green-400">{zReport.orders.totalCollected.toFixed(0)}</p><p className="text-[10px] sm:text-xs text-white/40">Tahsil Edilen (TL)</p></div>
+            <div className="card text-center"><p className="text-xl sm:text-3xl font-bold text-orange-400">{zReport.orders.totalDiscount.toFixed(0)}</p><p className="text-[10px] sm:text-xs text-white/40">Indirim (TL)</p></div>
+            <div className="card text-center col-span-2 md:col-span-1"><p className="text-xl sm:text-3xl font-bold text-red-400">{zReport.orders.cancelledOrders || 0}</p><p className="text-[10px] sm:text-xs text-white/40">Iptal</p></div>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
           {zReport.paymentBreakdown.length > 0 && (
-            <div className="card"><h3 className="text-lg font-semibold mb-3">Odeme Yontemleri</h3><div className="space-y-2">{zReport.paymentBreakdown.map((p) => (<div key={p.method} className="flex justify-between items-center py-2 border-b border-border last:border-0"><span>{p.method === "cash" ? "Nakit" : p.method === "card" ? "Kart" : "Online"}</span><div className="text-right"><span className="font-semibold">{p.total.toFixed(0)} TL</span><span className="text-white/40 text-xs ml-2">({p.count} islem)</span></div></div>))}</div></div>
+            <div className="card"><h3 className="text-base sm:text-lg font-semibold mb-3">Odeme Yontemleri</h3><div className="space-y-2">{zReport.paymentBreakdown.map((p) => (<div key={p.method} className="flex justify-between items-center py-2 border-b border-border last:border-0"><span className="text-sm">{p.method === "cash" ? "Nakit" : p.method === "card" ? "Kart" : "Online"}</span><div className="text-right"><span className="font-semibold text-sm">{p.total.toFixed(0)} TL</span><span className="text-white/40 text-xs ml-2">({p.count} islem)</span></div></div>))}</div></div>
           )}
           {zReport.sourceBreakdown.length > 0 && (
-            <div className="card"><h3 className="text-lg font-semibold mb-3">Kaynak Dagilimi</h3><div className="space-y-2">{zReport.sourceBreakdown.map((s) => (<div key={s.source} className="flex justify-between items-center py-2 border-b border-border last:border-0"><span>{SOURCE_LABELS[s.source] || s.source}</span><div className="text-right"><span className="font-semibold">{s.total.toFixed(0)} TL</span><span className="text-white/40 text-xs ml-2">({s.count} siparis)</span></div></div>))}</div></div>
+            <div className="card"><h3 className="text-base sm:text-lg font-semibold mb-3">Kaynak Dagilimi</h3><div className="space-y-2">{zReport.sourceBreakdown.map((s) => (<div key={s.source} className="flex justify-between items-center py-2 border-b border-border last:border-0"><span className="text-sm">{SOURCE_LABELS[s.source] || s.source}</span><div className="text-right"><span className="font-semibold text-sm">{s.total.toFixed(0)} TL</span><span className="text-white/40 text-xs ml-2">({s.count} siparis)</span></div></div>))}</div></div>
           )}
+          </div>
         </div>
       )}
 

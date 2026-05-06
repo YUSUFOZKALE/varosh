@@ -605,7 +605,7 @@ export default function CourierPage() {
   const locatedCount = deliveries.filter((d) => d.deliveryLatitude && d.deliveryLongitude).length;
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
       {/* QR Scanner - inline at top */}
       <div className="rounded-2xl overflow-hidden border border-border bg-black">
         {scanning ? (
@@ -631,17 +631,17 @@ export default function CourierPage() {
       </div>
 
       {/* Cash on Hand */}
-      <div className="bg-surface-1 rounded-2xl border border-border p-4">
+      <div className="bg-surface-1 rounded-2xl border border-border p-3 sm:p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center shrink-0">
               <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
             </div>
             <div>
               <p className="text-white/40 text-xs">Uzerimdeki Nakit</p>
-              <p className="text-2xl font-bold text-green-400">{cashOnHand.toFixed(0)} TL</p>
+              <p className="text-xl sm:text-2xl font-bold text-green-400">{cashOnHand.toFixed(0)} TL</p>
             </div>
           </div>
         </div>
@@ -665,17 +665,17 @@ export default function CourierPage() {
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => { setCashModal("deposit"); setCashAmount(cashOnHand > 0 ? cashOnHand.toFixed(0) : ""); setCashResult(null); }}
-            className="py-3 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 font-bold text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+            className="py-3 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 font-bold text-xs sm:text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-1.5 sm:gap-2"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
-            Kasa Teslimi
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+            <span className="whitespace-nowrap">Kasa Teslimi</span>
           </button>
           <button
             onClick={() => { setCashModal("withdrawal"); setCashAmount(""); setCashResult(null); }}
-            className="py-3 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-300 font-bold text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+            className="py-3 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-300 font-bold text-xs sm:text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-1.5 sm:gap-2"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
-            Kasadan Al
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+            <span className="whitespace-nowrap">Kasadan Al</span>
           </button>
         </div>
       </div>
@@ -683,20 +683,20 @@ export default function CourierPage() {
       {/* Pending packages - selectable list */}
       {pendingPackages.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0">
                 <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-orange-400 font-bold text-sm">{pendingPackages.length} paket hazir</p>
                 <p className="text-white/30 text-[11px]">Sec ve rotani olustur</p>
               </div>
             </div>
             {pickSelected.size > 0 && (
-              <span className="bg-orange-500 text-black font-bold text-xs px-2.5 py-1 rounded-full">{pickSelected.size} secili</span>
+              <span className="bg-orange-500 text-black font-bold text-xs px-2.5 py-1 rounded-full shrink-0">{pickSelected.size} secili</span>
             )}
           </div>
 
@@ -736,7 +736,7 @@ export default function CourierPage() {
             <button
               onClick={assignAndRoute}
               disabled={picking}
-              className="w-full py-4 rounded-2xl bg-orange-500 hover:bg-orange-400 text-black font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+              className="w-full py-3 sm:py-4 rounded-2xl bg-orange-500 hover:bg-orange-400 text-black font-bold text-sm sm:text-lg transition-all active:scale-[0.97] disabled:opacity-40"
             >
               {picking ? "Ataniyor..." : `Rota Olustur (${pickSelected.size} paket)`}
             </button>
@@ -745,7 +745,7 @@ export default function CourierPage() {
       )}
 
       {/* Header + Bulk toggle */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-bold">Teslimatlarim</h1>
           <p className="text-white/40 text-xs">{deliveries.length} aktif teslimat</p>
@@ -755,13 +755,13 @@ export default function CourierPage() {
             onClick={openNewCustomer}
             className="px-3 py-2 rounded-xl bg-purple-600/20 border border-purple-500/30 text-purple-300 text-xs font-bold transition-all active:scale-[0.97] flex items-center gap-1.5"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
-            Yeni Musteri
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+            <span className="whitespace-nowrap">Yeni Musteri</span>
           </button>
           {deliveries.length > 0 && (
             <button
               onClick={() => { setBulkMode(!bulkMode); setBulkSelected(new Set()); }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.97] ${bulkMode ? "bg-amber-500 text-black" : "bg-surface-2 text-white/50"}`}
+              className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.97] whitespace-nowrap ${bulkMode ? "bg-amber-500 text-black" : "bg-surface-2 text-white/50"}`}
             >
               {bulkMode ? "Toplu Aktif" : "Toplu Teslim"}
             </button>
@@ -771,20 +771,20 @@ export default function CourierPage() {
 
       {/* Bulk action bar */}
       {bulkMode && bulkSelected.size > 0 && (
-        <div className="sticky top-0 z-40 bg-neutral-900/95 backdrop-blur-sm rounded-2xl p-4 border border-amber-500/30 space-y-3">
-          <p className="text-center text-white font-semibold">{bulkSelected.size} siparis secildi &middot; {deliveries.filter((d) => bulkSelected.has(d.id)).reduce((s, d) => s + d.total, 0).toFixed(0)} TL</p>
-          <div className="grid grid-cols-2 gap-3">
+        <div className="sticky top-0 z-40 bg-neutral-900/95 backdrop-blur-sm rounded-2xl p-3 sm:p-4 border border-amber-500/30 space-y-2 sm:space-y-3">
+          <p className="text-center text-white font-semibold text-sm sm:text-base">{bulkSelected.size} siparis secildi &middot; {deliveries.filter((d) => bulkSelected.has(d.id)).reduce((s, d) => s + d.total, 0).toFixed(0)} TL</p>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             <button
               onClick={() => bulkDeliver("cash")}
               disabled={paying}
-              className="py-4 rounded-2xl bg-green-600 hover:bg-green-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+              className="py-3 sm:py-4 rounded-2xl bg-green-600 hover:bg-green-500 text-white font-bold text-base sm:text-lg transition-all active:scale-[0.97] disabled:opacity-40"
             >
               Toplu Nakit
             </button>
             <button
               onClick={() => bulkDeliver("card")}
               disabled={paying}
-              className="py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+              className="py-3 sm:py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-base sm:text-lg transition-all active:scale-[0.97] disabled:opacity-40"
             >
               Toplu Kart
             </button>
@@ -795,23 +795,23 @@ export default function CourierPage() {
       {locatedCount > 1 && (
         <button
           onClick={openFullRoute}
-          className="w-full py-4 rounded-2xl bg-accent text-black font-bold text-center text-lg transition-all active:scale-[0.97] shadow-lg shadow-accent/30"
+          className="w-full py-3 sm:py-4 rounded-2xl bg-accent text-black font-bold text-center text-sm sm:text-lg transition-all active:scale-[0.97] shadow-lg shadow-accent/30"
         >
           Tum Guzergahi Ac ({locatedCount} durak + donus)
         </button>
       )}
 
       {deliveries.map((d) => (
-        <div key={d.id} className={`bg-surface-1 rounded-2xl p-4 border transition-all ${bulkMode && bulkSelected.has(d.id) ? "border-amber-500/50" : "border-border"}`} onClick={bulkMode ? () => toggleBulk(d.id) : undefined}>
-          <div className="flex justify-between items-start mb-3">
-            <div className="flex items-center gap-2">
+        <div key={d.id} className={`bg-surface-1 rounded-2xl p-3 sm:p-4 border transition-all ${bulkMode && bulkSelected.has(d.id) ? "border-amber-500/50" : "border-border"}`} onClick={bulkMode ? () => toggleBulk(d.id) : undefined}>
+          <div className="flex justify-between items-start mb-3 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               {bulkMode && (
-                <input type="checkbox" checked={bulkSelected.has(d.id)} onChange={() => toggleBulk(d.id)} className="accent-amber-500 w-5 h-5" onClick={(e) => e.stopPropagation()} />
+                <input type="checkbox" checked={bulkSelected.has(d.id)} onChange={() => toggleBulk(d.id)} className="accent-amber-500 w-5 h-5 shrink-0" onClick={(e) => e.stopPropagation()} />
               )}
-              <span className="font-bold text-lg">#{d.id}</span>
-              <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">YOLDA</span>
+              <span className="font-bold text-lg shrink-0">#{d.id}</span>
+              <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded shrink-0">YOLDA</span>
             </div>
-            <span className="text-white/40 text-sm">{getElapsed(d.createdAt)}dk</span>
+            <span className="text-white/40 text-sm shrink-0">{getElapsed(d.createdAt)}dk</span>
           </div>
 
           <div className="space-y-2 mb-4">
@@ -825,9 +825,9 @@ export default function CourierPage() {
                 <a href={`tel:${d.customerPhone}`} className="text-blue-400 font-medium">{d.customerPhone}</a>
               </div>
             )}
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-white/40">Adres</p>
-              <p className="font-medium">{d.deliveryAddress}</p>
+              <p className="font-medium text-sm sm:text-base break-words">{d.deliveryAddress}</p>
             </div>
           </div>
 
@@ -838,11 +838,11 @@ export default function CourierPage() {
 
           {!bulkMode && (
             <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {d.deliveryLatitude && d.deliveryLongitude && (
                   <button
                     onClick={() => openSingleNav(d)}
-                    className="py-3 rounded-xl bg-amber-600 text-white font-bold text-sm text-center transition-all active:scale-[0.97]"
+                    className="py-3 rounded-xl bg-amber-600 text-white font-bold text-xs sm:text-sm text-center transition-all active:scale-[0.97]"
                   >
                     YOL TARiFi
                   </button>
@@ -850,16 +850,17 @@ export default function CourierPage() {
                 {d.customerPhone && (
                   <a
                     href={`tel:${d.customerPhone}`}
-                    className="py-3 rounded-xl bg-blue-600 text-white font-bold text-sm text-center"
+                    className="py-3 rounded-xl bg-blue-600 text-white font-bold text-xs sm:text-sm text-center"
                   >
                     ARA
                   </a>
                 )}
                 <button
                   onClick={() => openPayment(d)}
-                  className={`py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-all active:scale-[0.97] ${
-                    !d.deliveryLatitude && !d.customerPhone ? "col-span-3" :
-                    !d.deliveryLatitude || !d.customerPhone ? "col-span-2" : ""
+                  className={`py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.97] ${
+                    !d.deliveryLatitude && !d.customerPhone ? "col-span-2 sm:col-span-3" :
+                    !d.deliveryLatitude || !d.customerPhone ? "col-span-2" :
+                    "col-span-2 sm:col-span-1"
                   }`}
                 >
                   TESLiM
@@ -1057,13 +1058,13 @@ export default function CourierPage() {
       {/* Cash Transaction Modal */}
       {cashModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !cashProcessing && setCashModal(null)}>
-          <div className="bg-neutral-900 rounded-3xl w-[90%] max-w-sm p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-neutral-900 rounded-3xl w-[92%] max-w-sm p-5 sm:p-6 space-y-4 sm:space-y-5" onClick={(e) => e.stopPropagation()}>
             <div className="text-center">
-              <div className={`w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center ${cashModal === "deposit" ? "bg-amber-500/20" : "bg-blue-500/20"}`}>
+              <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center ${cashModal === "deposit" ? "bg-amber-500/20" : "bg-blue-500/20"}`}>
                 {cashModal === "deposit" ? (
-                  <svg className="w-7 h-7 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                  <svg className="w-6 h-6 sm:w-7 sm:h-7 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
                 ) : (
-                  <svg className="w-7 h-7 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                  <svg className="w-6 h-6 sm:w-7 sm:h-7 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
                 )}
               </div>
               <h3 className="text-lg font-bold text-white">{cashModal === "deposit" ? "Kasa Teslimi" : "Kasadan Al"}</h3>
@@ -1078,11 +1079,11 @@ export default function CourierPage() {
                 inputMode="numeric"
                 value={cashAmount}
                 onChange={(e) => setCashAmount(e.target.value)}
-                className="w-full bg-neutral-800 rounded-2xl px-5 py-4 text-center text-3xl font-bold text-white border border-neutral-700/50 focus:outline-none focus:border-purple-500/50"
+                className="w-full bg-neutral-800 rounded-2xl px-4 sm:px-5 py-3 sm:py-4 text-center text-2xl sm:text-3xl font-bold text-white border border-neutral-700/50 focus:outline-none focus:border-purple-500/50"
                 placeholder="0"
                 autoFocus
               />
-              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 font-bold text-lg">TL</span>
+              <span className="absolute right-4 sm:right-5 top-1/2 -translate-y-1/2 text-white/30 font-bold text-base sm:text-lg">TL</span>
             </div>
 
             {cashModal === "deposit" && cashOnHand > 0 && (
@@ -1120,9 +1121,9 @@ export default function CourierPage() {
       {/* Cash Result Modal */}
       {cashResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setCashResult(null)}>
-          <div className="bg-neutral-900 rounded-3xl w-[90%] max-w-sm p-6 space-y-4 text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-green-500/20 mx-auto flex items-center justify-center">
-              <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+          <div className="bg-neutral-900 rounded-3xl w-[92%] max-w-sm p-5 sm:p-6 space-y-4 text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-green-500/20 mx-auto flex items-center justify-center">
+              <svg className="w-7 h-7 sm:w-8 sm:h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
             </div>
             <div>
               <h3 className="text-lg font-bold text-white">Islem Basarili</h3>
@@ -1132,9 +1133,9 @@ export default function CourierPage() {
                   : `Kasadan ${cashResult.amount.toFixed(0)} TL alindi`}
               </p>
             </div>
-            <div className="bg-neutral-800 rounded-2xl p-4">
+            <div className="bg-neutral-800 rounded-2xl p-3 sm:p-4">
               <p className="text-white/40 text-xs mb-1">Uzerimdeki Nakit</p>
-              <p className="text-3xl font-bold text-green-400">{cashResult.newBalance.toFixed(0)} TL</p>
+              <p className="text-2xl sm:text-3xl font-bold text-green-400">{cashResult.newBalance.toFixed(0)} TL</p>
             </div>
             <button
               onClick={() => setCashResult(null)}
@@ -1153,13 +1154,13 @@ export default function CourierPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => !paying && (setPaymentModal(null), setOrderDetail(null))}>
           <div className="bg-neutral-900 rounded-t-3xl w-full max-w-md max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
-            <div className="p-5 text-center border-b border-neutral-800/60 shrink-0">
+            <div className="p-4 sm:p-5 text-center border-b border-neutral-800/60 shrink-0">
               <h3 className="text-lg font-bold text-white">Siparis #{paymentModal.id}</h3>
-              <p className="text-white/40 text-sm mt-1">{paymentModal.customerName || "Isimsiz"}{paymentModal.customerPhone ? ` • ${paymentModal.customerPhone}` : ""}</p>
+              <p className="text-white/40 text-xs sm:text-sm mt-1 break-words">{paymentModal.customerName || "Isimsiz"}{paymentModal.customerPhone ? ` • ${paymentModal.customerPhone}` : ""}</p>
             </div>
 
             {/* Items List */}
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
               {orderDetail ? (
                 <>
                   <div className="space-y-2.5">
@@ -1211,24 +1212,24 @@ export default function CourierPage() {
             </div>
 
             {/* Actions */}
-            <div className="p-5 border-t border-neutral-800/60 space-y-3 shrink-0">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 sm:p-5 border-t border-neutral-800/60 space-y-2 sm:space-y-3 shrink-0">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <button
                   onClick={() => markDelivered(paymentModal.id, "cash")}
                   disabled={paying}
-                  className="py-4 rounded-2xl bg-green-600 hover:bg-green-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+                  className="py-3 sm:py-4 rounded-2xl bg-green-600 hover:bg-green-500 text-white font-bold text-base sm:text-lg transition-all active:scale-[0.97] disabled:opacity-40"
                 >
                   Nakit
                 </button>
                 <button
                   onClick={() => markDelivered(paymentModal.id, "card")}
                   disabled={paying}
-                  className="py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-40"
+                  className="py-3 sm:py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-base sm:text-lg transition-all active:scale-[0.97] disabled:opacity-40"
                 >
                   Kart
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <button
                   onClick={() => window.open(`/receipt/${paymentModal.id}`, "_blank")}
                   className="py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/60 font-medium text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"

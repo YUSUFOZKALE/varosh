@@ -545,7 +545,7 @@ export default function WaiterPage() {
                           </div>
                         </button>
                         {isExpanded && (
-                          <div className="absolute inset-x-0 top-0 z-40 bg-neutral-900 border-2 border-amber-500/60 rounded-xl overflow-hidden shadow-2xl shadow-black/40">
+                          <div className="fixed inset-x-0 bottom-0 z-40 bg-neutral-900 border-t-2 border-amber-500/60 rounded-t-2xl overflow-hidden shadow-2xl shadow-black/40 sm:absolute sm:inset-x-0 sm:top-0 sm:bottom-auto sm:rounded-xl sm:border-2">
                             <div className="px-3 py-2 border-b border-neutral-800/60">
                               <div className="flex items-center justify-between">
                                 <h3 className="font-bold text-white text-base leading-tight">{item.name}</h3>
@@ -598,16 +598,16 @@ export default function WaiterPage() {
             <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
               {cart.map((c, i) => (
                 <div key={i} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className="flex items-center gap-0.5">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
+                    <div className="flex items-center gap-0.5 shrink-0">
                       <button onClick={() => updateCartQty(i, -1)} className="w-5 h-5 bg-surface-2 rounded text-white/40 flex items-center justify-center">-</button>
                       <span className="text-white/50 font-bold w-5 text-center">{c.qty}</span>
                       <button onClick={() => updateCartQty(i, 1)} className="w-5 h-5 bg-surface-2 rounded text-white/40 flex items-center justify-center">+</button>
                     </div>
                     <span className="text-white/70 truncate">{c.name}</span>
-                    {c.notes && <span className="text-blue-400/40 italic truncate">({c.notes})</span>}
+                    {c.notes && <span className="text-blue-400/40 italic truncate hidden sm:inline">({c.notes})</span>}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 ml-1">
                     <span className="text-white/40">{(c.price * c.qty).toFixed(0)}</span>
                     <button onClick={() => removeFromCart(i)} className="text-red-400/40 hover:text-red-400">&times;</button>
                   </div>
@@ -658,7 +658,7 @@ export default function WaiterPage() {
 
         {tab === "masa" && (
           <>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {tables.filter((t) => t.isActive).map((t) => {
                 const isOpen = openTables.has(t.number);
                 return (
@@ -808,13 +808,13 @@ export default function WaiterPage() {
 
           {activeOrders.map((order) => (
             <div key={order.id} className={`rounded-xl p-3 ${order.paymentMethod ? "bg-green-900/10 border border-green-800/30" : "bg-surface-1 border border-border"}`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
                   <span className="text-white/40 text-xs font-bold">#{order.id}</span>
                   <span className="text-white/20 text-xs">{new Date(order.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>
                   {order.paymentMethod && <span className="text-green-400 text-[10px] bg-green-600/20 px-1.5 py-0.5 rounded">Odendi</span>}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <span className="text-white/50 text-xs font-semibold">{order.total.toFixed(0)} TL</span>
                   {!order.paymentMethod && (
                     <button
@@ -829,11 +829,11 @@ export default function WaiterPage() {
 
               {order.items.map((item) => (
                 <div key={item.id} className="flex items-center justify-between py-1 group">
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 truncate">
                     <span className="text-white/50 text-xs font-bold">{item.quantity}x</span>
                     <span className="text-white text-sm ml-1">{item.name}</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-2">
                     <span className="text-white/40 text-xs">{item.totalPrice.toFixed(0)}</span>
                     {!order.paymentMethod && (
                       <>
