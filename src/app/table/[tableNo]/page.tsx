@@ -36,17 +36,17 @@ interface TableSession {
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
-  "Doner": "🥙",
-  "Tost & Sandvic": "🥪",
-  "Atistirmalik": "🍟",
-  "Icecekler": "🥤",
+  "Döner": "🥙",
+  "Tost & Sandviç": "🥪",
+  "Atıştırmalık": "🍟",
+  "İçecekler": "🥤",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  "Doner": "from-amber-900/60 to-amber-800/30",
-  "Tost & Sandvic": "from-orange-900/60 to-orange-800/30",
-  "Atistirmalik": "from-red-900/60 to-red-800/30",
-  "Icecekler": "from-sky-900/60 to-sky-800/30",
+  "Döner": "from-amber-900/60 to-amber-800/30",
+  "Tost & Sandviç": "from-orange-900/60 to-orange-800/30",
+  "Atıştırmalık": "from-red-900/60 to-red-800/30",
+  "İçecekler": "from-sky-900/60 to-sky-800/30",
 };
 
 export default function TableOrderPage() {

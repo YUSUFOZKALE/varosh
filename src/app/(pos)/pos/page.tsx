@@ -15,10 +15,10 @@ interface Customer { id: number; phone: string; name: string | null; address: st
 type OrderType = "dine_in" | "takeaway" | "delivery";
 
 const CATEGORY_ICONS: Record<string, string> = {
-  "Doner": "🥙",
-  "Tost & Sandvic": "🥪",
-  "Atistirmalik": "🍟",
-  "Icecekler": "🥤",
+  "Döner": "🥙",
+  "Tost & Sandviç": "🥪",
+  "Atıştırmalık": "🍟",
+  "İçecekler": "🥤",
 };
 
 export default function PosPage() {

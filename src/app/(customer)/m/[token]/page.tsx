@@ -20,10 +20,10 @@ interface CartItem {
 interface LinkInfo { name: string; phone: string; address: string; expiresAt: string }
 
 const CATEGORY_ICONS: Record<string, string> = {
-  "Doner": "🥙",
-  "Tost & Sandvic": "🥪",
-  "Atistirmalik": "🍟",
-  "Icecekler": "🥤",
+  "Döner": "🥙",
+  "Tost & Sandviç": "🥪",
+  "Atıştırmalık": "🍟",
+  "İçecekler": "🥤",
 };
 
 export default function CustomerOrderPage() {

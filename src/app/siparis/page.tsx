@@ -49,25 +49,25 @@ interface ShopSettings {
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
-  "Doner": "\u{1F959}",
-  "Tost & Sandvic": "\u{1F96A}",
-  "Atistirmalik": "\u{1F35F}",
-  "Icecekler": "\u{1F964}",
+  "Döner": "\u{1F959}",
+  "Tost & Sandviç": "\u{1F96A}",
+  "Atıştırmalık": "\u{1F35F}",
+  "İçecekler": "\u{1F964}",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  "Doner": "from-amber-900/60 to-amber-800/30",
-  "Tost & Sandvic": "from-orange-900/60 to-orange-800/30",
-  "Atistirmalik": "from-red-900/60 to-red-800/30",
-  "Icecekler": "from-sky-900/60 to-sky-800/30",
+  "Döner": "from-amber-900/60 to-amber-800/30",
+  "Tost & Sandviç": "from-orange-900/60 to-orange-800/30",
+  "Atıştırmalık": "from-red-900/60 to-red-800/30",
+  "İçecekler": "from-sky-900/60 to-sky-800/30",
 };
 
 type CardLayout = "wide" | "portrait" | "square" | "standard";
 
 function getCategoryLayout(catName: string): CardLayout {
-  if (catName === "Doner") return "wide";
-  if (catName === "Icecekler") return "portrait";
-  if (catName === "Atistirmalik") return "square";
+  if (catName === "Döner") return "wide";
+  if (catName === "İçecekler") return "portrait";
+  if (catName === "Atıştırmalık") return "square";
   return "standard";
 }
 
