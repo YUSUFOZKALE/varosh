@@ -1,7 +1,9 @@
-import { getDb, schema } from "./index";
+import { getDb, getSqliteDb, schema } from "./index";
 
 export function seedDatabase() {
   const db = getDb();
+  const sqlite = getSqliteDb();
+  sqlite.pragma("foreign_keys = OFF");
 
   const defaultSettings = [
     { key: "business_name", value: "Varosh Streetfood" },
@@ -27,49 +29,53 @@ export function seedDatabase() {
   }
 
   const categories = [
-    { name: "Doner", sortOrder: 1 },
-    { name: "Tost & Sandvic", sortOrder: 2 },
-    { name: "Atistirmalik", sortOrder: 3 },
-    { name: "Icecekler", sortOrder: 4 },
+    { name: "Döner", sortOrder: 1 },
+    { name: "Tost & Sandviç", sortOrder: 2 },
+    { name: "Atıştırmalık", sortOrder: 3 },
+    { name: "İçecekler", sortOrder: 4 },
   ];
 
+  db.delete(schema.menuItems).run();
+  db.delete(schema.menuCategories).run();
   for (const c of categories) {
     db.insert(schema.menuCategories)
       .values({ ...c, isActive: true })
-      .onConflictDoNothing()
       .run();
   }
 
   const items = [
-    { categoryId: 1, name: "Tiftik Kova", price: 150, deliveryPrice: 180, prepTimeMinutes: 10 },
-    { categoryId: 1, name: "Tiftik Tavuk Doner", price: 100, deliveryPrice: 130, prepTimeMinutes: 8 },
-    { categoryId: 1, name: "Kumru", price: 150, deliveryPrice: 180, prepTimeMinutes: 7 },
-    { categoryId: 1, name: "Muhtes Tobyo", price: 200, deliveryPrice: 230, prepTimeMinutes: 10 },
-    { categoryId: 3, name: "Potso", price: 80, deliveryPrice: 100, prepTimeMinutes: 8 },
-    { categoryId: 3, name: "Potso Sosisli", price: 100, deliveryPrice: 120, prepTimeMinutes: 8 },
-    { categoryId: 3, name: "Potso Kasarli", price: 100, deliveryPrice: 120, prepTimeMinutes: 8 },
-    { categoryId: 3, name: "Potso Sosisli Kasarli", price: 120, deliveryPrice: 140, prepTimeMinutes: 8 },
-    { categoryId: 3, name: "Parmak Patates", price: 100, deliveryPrice: 120, prepTimeMinutes: 6 },
-    { categoryId: 2, name: "Sucuklu Tost", price: 100, deliveryPrice: 120, prepTimeMinutes: 6 },
-    { categoryId: 2, name: "Kasarli Tost", price: 100, deliveryPrice: 120, prepTimeMinutes: 6 },
-    { categoryId: 2, name: "Karisik Tost", price: 120, deliveryPrice: 140, prepTimeMinutes: 6 },
-    { categoryId: 2, name: "Jenger Tost", price: 130, deliveryPrice: 150, prepTimeMinutes: 7 },
-    { categoryId: 2, name: "Ayvalik Tost", price: 150, deliveryPrice: 180, prepTimeMinutes: 7 },
-    { categoryId: 3, name: "Tavuk Nugget", price: 80, deliveryPrice: 80, prepTimeMinutes: 7 },
-    { categoryId: 3, name: "Sogan Halkasi", price: 60, deliveryPrice: 80, prepTimeMinutes: 6 },
-    { categoryId: 3, name: "Sigara Boregi", price: 100, deliveryPrice: 100, prepTimeMinutes: 5 },
-    { categoryId: 4, name: "Icim Ayran 285ml", price: 30, deliveryPrice: 40, prepTimeMinutes: 0 },
-    { categoryId: 4, name: "330cl Kutu Pepsi", price: 60, deliveryPrice: 70, prepTimeMinutes: 0 },
-    { categoryId: 4, name: "Su", price: 20, deliveryPrice: 20, prepTimeMinutes: 0 },
-    { categoryId: 4, name: "1 Lt Kola", price: 90, deliveryPrice: 100, prepTimeMinutes: 0 },
-    { categoryId: 4, name: "Ice Tea", price: 60, deliveryPrice: 70, prepTimeMinutes: 0 },
-    { categoryId: 4, name: "Soda", price: 30, deliveryPrice: 40, prepTimeMinutes: 0 },
+    // Döner
+    { categoryId: 1, name: "Tiftik Tavuk Döner", price: 100, deliveryPrice: 130, prepTimeMinutes: 8, imageUrl: "/images/products/tiftik-tavuk.webp" },
+    { categoryId: 1, name: "Tiftik Kova Döner", price: 150, deliveryPrice: 180, prepTimeMinutes: 10, imageUrl: "/images/products/tiftik-kova-doner-2.webp" },
+    { categoryId: 1, name: "Dubble Tiftik Kova Döner", price: 250, deliveryPrice: 280, prepTimeMinutes: 12, imageUrl: "/images/products/dubble-tiftik-kova-d-ner-25.webp" },
+    // Tost & Sandviç
+    { categoryId: 2, name: "Sucuklu Tost", price: 100, deliveryPrice: 120, prepTimeMinutes: 6, imageUrl: "/images/products/sucuklu-tost.webp" },
+    { categoryId: 2, name: "Kaşarlı Tost", price: 100, deliveryPrice: 120, prepTimeMinutes: 6, imageUrl: "/images/products/kasarli-tost.webp" },
+    { categoryId: 2, name: "Karışık Tost", price: 120, deliveryPrice: 140, prepTimeMinutes: 6, imageUrl: "/images/products/karisik-tost.webp" },
+    { categoryId: 2, name: "Yengen Tost", price: 130, deliveryPrice: 150, prepTimeMinutes: 7, imageUrl: "/images/products/yengen-tost.webp" },
+    { categoryId: 2, name: "Ayvalık Tost", price: 150, deliveryPrice: 180, prepTimeMinutes: 7, imageUrl: "/images/products/ayvalik-tost.webp" },
+    // Atıştırmalık
+    { categoryId: 3, name: "Munchies Tabağı", price: 200, deliveryPrice: 230, prepTimeMinutes: 10, imageUrl: "/images/products/munchies.webp" },
+    { categoryId: 3, name: "Patso Sosisli", price: 100, deliveryPrice: 120, prepTimeMinutes: 8, imageUrl: "/images/products/patso.webp" },
+    { categoryId: 3, name: "Patso Kaşarlı", price: 100, deliveryPrice: 120, prepTimeMinutes: 8, imageUrl: "/images/products/patso.webp" },
+    { categoryId: 3, name: "Patso Sosisli Kaşarlı", price: 120, deliveryPrice: 140, prepTimeMinutes: 8, imageUrl: "/images/products/patso.webp" },
+    { categoryId: 3, name: "Tavuk Nugget", price: 80, deliveryPrice: 100, prepTimeMinutes: 7, imageUrl: "/images/products/tavuk-nugget.webp" },
+    { categoryId: 3, name: "Soğan Halkası", price: 60, deliveryPrice: 80, prepTimeMinutes: 6, imageUrl: "/images/products/sogan-halkasi.webp" },
+    { categoryId: 3, name: "Sigara Böreği", price: 100, deliveryPrice: 120, prepTimeMinutes: 5, imageUrl: "/images/products/sigara-boregi.webp" },
+    { categoryId: 3, name: "Parmak Patates", price: 100, deliveryPrice: 120, prepTimeMinutes: 6, imageUrl: "/images/products/parmak-patates.webp" },
+    { categoryId: 3, name: "Kumru Sandviç", price: 150, deliveryPrice: 180, prepTimeMinutes: 7, imageUrl: "/images/products/kumru.webp" },
+    // İçecekler
+    { categoryId: 4, name: "İçim Ayran 285ml", price: 30, deliveryPrice: 40, prepTimeMinutes: 0, imageUrl: "/images/products/kapali-plastik-bardak-ayran-icim-12.webp" },
+    { categoryId: 4, name: "Kutu Kola", price: 60, deliveryPrice: 70, prepTimeMinutes: 0, imageUrl: "/images/products/kutu-kola.webp" },
+    { categoryId: 4, name: "Su", price: 20, deliveryPrice: 20, prepTimeMinutes: 0, imageUrl: "/images/products/kisi-su-14.webp" },
+    { categoryId: 4, name: "1 Lt Kola", price: 90, deliveryPrice: 100, prepTimeMinutes: 0, imageUrl: "/images/products/1lt-kola.webp" },
+    { categoryId: 4, name: "Ice Tea", price: 60, deliveryPrice: 70, prepTimeMinutes: 0, imageUrl: "/images/products/ice-tea.webp" },
+    { categoryId: 4, name: "Soda", price: 30, deliveryPrice: 40, prepTimeMinutes: 0, imageUrl: "/images/products/soda.webp" },
   ];
 
   for (const item of items) {
     db.insert(schema.menuItems)
       .values({ ...item, isAvailable: true, sortOrder: 0 })
-      .onConflictDoNothing()
       .run();
   }
 
@@ -103,5 +109,6 @@ export function seedDatabase() {
     .onConflictDoNothing()
     .run();
 
+  sqlite.pragma("foreign_keys = ON");
   console.log("Seed verileri yuklendi.");
 }
