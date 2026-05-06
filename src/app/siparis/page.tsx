@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
-import ItemCustomizeModal, { type MenuItemOption, type CustomizedItem } from "@/components/item-customize-modal";
+import { type MenuItemOption } from "@/components/item-customize-modal";
 import { usePublicSettings } from "@/hooks/use-public-settings";
 
 const OrderMap = dynamic(() => import("@/components/order-map"), { ssr: false });
@@ -97,6 +97,10 @@ function SiparisContent() {
   const [notes, setNotes] = useState("");
   const [showCart, setShowCart] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
+  const [custRemoved, setCustRemoved] = useState<Set<string>>(new Set());
+  const [custExtras, setCustExtras] = useState<Set<number>>(new Set());
+  const [custQty, setCustQty] = useState(1);
+  const [custNotes, setCustNotes] = useState("");
   const [isScrolling, setIsScrolling] = useState(false);
   const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
@@ -277,7 +281,12 @@ function SiparisContent() {
   function handleItemClick(item: MenuItem) {
     const itemOpts = options.filter((o) => o.menuItemId === item.id);
     if (itemOpts.length > 0) {
+      if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
       setCustomizeItem(item);
+      setCustRemoved(new Set());
+      setCustExtras(new Set());
+      setCustQty(1);
+      setCustNotes("");
     } else {
       addSimpleItem(item);
     }
@@ -294,24 +303,20 @@ function SiparisContent() {
     });
   }
 
-  function handleCustomizedAdd(ci: CustomizedItem) {
-    const key = `${ci.menuItemId}_${ci.removedIngredients.sort().join(",")}_${ci.selectedExtras.sort().join(",")}`;
+  function addCustomizedToCart() {
+    if (!customizeItem) return;
+    const itemOpts = options.filter((o) => o.menuItemId === customizeItem.id);
+    const extrasCost = itemOpts.filter((o) => o.groupName === "Ekstralar" && custExtras.has(o.id)).reduce((s, o) => s + o.priceModifier, 0);
+    const finalPrice = customizeItem.price + extrasCost;
+    const removedArr = Array.from(custRemoved).sort();
+    const extrasArr = Array.from(custExtras).sort();
+    const key = `${customizeItem.id}_${removedArr.join(",")}_${extrasArr.join(",")}_${custNotes.trim()}`;
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
-      if (existing) {
-        return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + ci.quantity } : c);
-      }
-      return [...prev, {
-        key,
-        menuItemId: ci.menuItemId,
-        name: ci.name,
-        price: ci.finalPrice,
-        quantity: ci.quantity,
-        imageUrl: ci.imageUrl,
-        removedIngredients: ci.removedIngredients,
-        selectedExtras: ci.selectedExtras,
-      }];
+      if (existing) return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + custQty } : c);
+      return [...prev, { key, menuItemId: customizeItem.id, name: customizeItem.name, price: finalPrice, quantity: custQty, imageUrl: customizeItem.imageUrl, removedIngredients: removedArr, selectedExtras: extrasArr }];
     });
+    setCustomizeItem(null);
   }
 
   function updateQty(key: string, delta: number) {
@@ -632,6 +637,13 @@ function SiparisContent() {
                   const qty = getItemQty(item.id);
                   const hasOpts = options.some((o) => o.menuItemId === item.id);
                   const catColor = CATEGORY_COLORS[cat.name] || "from-neutral-800/60 to-neutral-700/30";
+                  const isExpanded = customizeItem?.id === item.id;
+                  const itemOpts = isExpanded ? options.filter((o) => o.menuItemId === item.id) : [];
+                  const ingredients = itemOpts.filter((o) => o.groupName === "Icindekiler");
+                  const extraOpts = itemOpts.filter((o) => o.groupName === "Ekstralar");
+                  const extrasCost = isExpanded ? extraOpts.filter((o) => custExtras.has(o.id)).reduce((s, o) => s + o.priceModifier, 0) : 0;
+                  const unitPrice = item.price + extrasCost;
+                  const totalPrice = unitPrice * custQty;
 
                   const qtyControl = qty > 0 && !hasOpts ? (
                     <div className="flex items-center gap-0 bg-neutral-800 rounded-full">
@@ -668,122 +680,191 @@ function SiparisContent() {
                     </div>
                   ) : null;
 
+                  const popupOverlay = isExpanded ? (
+                    <div className="absolute inset-x-0 top-0 z-40 bg-neutral-900 border-2 border-amber-500/60 rounded-2xl overflow-hidden shadow-2xl shadow-black/40">
+                      <div className="px-4 py-3 border-b border-neutral-800/60">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-white text-lg leading-tight">{item.name}</h3>
+                          <button onClick={() => setCustomizeItem(null)} className="w-8 h-8 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 shrink-0">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                        <span className="text-amber-400 font-extrabold text-xl">{item.price} TL</span>
+                      </div>
+                      <div className="px-4 py-3 space-y-3 max-h-[50vh] overflow-y-auto">
+                        {ingredients.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-bold text-white/40 mb-1.5 uppercase">Icindekiler</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {ingredients.map((ing) => {
+                                const isRemoved = custRemoved.has(ing.optionName);
+                                return (
+                                  <button key={ing.id} onClick={() => setCustRemoved((prev) => { const n = new Set(prev); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${isRemoved ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20" : "bg-neutral-800/80 text-white/70 border border-neutral-700/50"}`}>
+                                    {isRemoved && <span className="mr-0.5">✕</span>}{ing.optionName}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {extraOpts.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-bold text-white/40 mb-1.5 uppercase">Ekstralar</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {extraOpts.map((ext) => {
+                                const isSel = custExtras.has(ext.id);
+                                return (
+                                  <button key={ext.id} onClick={() => setCustExtras((prev) => { const n = new Set(prev); if (n.has(ext.id)) n.delete(ext.id); else n.add(ext.id); return n; })} className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 ${isSel ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-neutral-800/80 text-white/70 border border-neutral-700/50"}`}>
+                                    {ext.optionName} <span className={isSel ? "text-amber-400" : "text-white/30"}>+{ext.priceModifier}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <textarea value={custNotes} onChange={(e) => setCustNotes(e.target.value)} placeholder="Not..." rows={2} className="w-full bg-neutral-800/60 text-white rounded-lg px-3 py-2 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20 resize-none overflow-y-auto" />
+                        <div className="flex items-center gap-2 pt-1">
+                          <div className="flex items-center bg-neutral-800 rounded-full shrink-0">
+                            <button onClick={() => setCustQty(Math.max(1, custQty - 1))} className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 text-base font-bold">−</button>
+                            <span className="text-white font-bold text-base min-w-[24px] text-center">{custQty}</span>
+                            <button onClick={() => setCustQty(custQty + 1)} className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center text-black text-base font-bold">+</button>
+                          </div>
+                          <button onClick={addCustomizedToCart} className="flex-1 py-2.5 rounded-xl bg-amber-500 text-black font-bold text-sm active:scale-[0.97]">
+                            Ekle {custQty}x {totalPrice.toFixed(0)} TL
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null;
+
                   if (layout === "wide") {
                     return (
-                      <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                        <div className="relative">
-                          {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className="w-full aspect-[16/9] object-cover" />
-                          ) : placeholder("aspect-[16/9]")}
-                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-900 via-neutral-900/80 to-transparent pt-12 pb-4 px-4">
-                            <h3 className="font-bold text-white text-lg leading-tight">{item.name}</h3>
-                            {item.description && <p className="text-white/50 text-xs mt-1">{item.description}</p>}
+                      <div key={item.id} className="relative">
+                        <div className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
+                          <div className="relative">
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt={item.name} className="w-full aspect-[16/9] object-cover" />
+                            ) : placeholder("aspect-[16/9]")}
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-900 via-neutral-900/80 to-transparent pt-12 pb-4 px-4">
+                              <h3 className="font-bold text-white text-lg leading-tight">{item.name}</h3>
+                              {item.description && <p className="text-white/50 text-xs mt-1">{item.description}</p>}
+                            </div>
+                            {badge}
                           </div>
-                          {badge}
+                          <div className="px-4 pb-4 flex items-center justify-between">
+                            <span className="text-amber-400 font-extrabold text-xl">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
+                            {qtyControl}
+                          </div>
                         </div>
-                        <div className="px-4 pb-4 flex items-center justify-between">
-                          <span className="text-amber-400 font-extrabold text-xl">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
-                          {qtyControl}
-                        </div>
+                        {popupOverlay}
                       </div>
                     );
                   }
 
                   if (layout === "portrait") {
                     return (
-                      <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                        <div className="relative">
-                          {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className="w-full aspect-[2/3] object-cover" />
-                          ) : placeholder("aspect-[2/3]")}
-                          {badge}
-                        </div>
-                        <div className="p-3">
-                          <h3 className="font-bold text-white text-sm leading-tight mb-2">{item.name}</h3>
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-400 font-extrabold text-base">{item.price.toFixed(0)} TL</span>
-                            {qty > 0 && !hasOpts ? (
-                              <div className="flex items-center gap-0 bg-neutral-800 rounded-full scale-90">
-                                <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" /></svg>
+                      <div key={item.id} className="relative">
+                        <div className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
+                          <div className="relative">
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt={item.name} className="w-full aspect-[2/3] object-cover" />
+                            ) : placeholder("aspect-[2/3]")}
+                            {badge}
+                          </div>
+                          <div className="p-3">
+                            <h3 className="font-bold text-white text-sm leading-tight mb-2">{item.name}</h3>
+                            <div className="flex items-center justify-between">
+                              <span className="text-amber-400 font-extrabold text-base">{item.price.toFixed(0)} TL</span>
+                              {qty > 0 && !hasOpts ? (
+                                <div className="flex items-center gap-0 bg-neutral-800 rounded-full scale-90">
+                                  <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" /></svg>
+                                  </button>
+                                  <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
+                                  <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                                  </button>
+                                </div>
+                              ) : (
+                                <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="bg-amber-500 active:scale-95 text-black font-bold text-xs px-3 py-1.5 rounded-full">
+                                  Ekle
                                 </button>
-                                <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
-                                <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="bg-amber-500 active:scale-95 text-black font-bold text-xs px-3 py-1.5 rounded-full">
-                                Ekle
-                              </button>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
+                        {popupOverlay}
                       </div>
                     );
                   }
 
                   if (layout === "square") {
                     return (
-                      <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                        <div className="relative">
-                          {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className="w-full aspect-square object-cover" />
-                          ) : placeholder("aspect-square")}
-                          {badge}
-                        </div>
-                        <div className="p-3">
-                          <h3 className="font-bold text-white text-sm leading-tight mb-2">{item.name}</h3>
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-400 font-extrabold text-base">{item.price.toFixed(0)} TL</span>
-                            {qty > 0 && !hasOpts ? (
-                              <div className="flex items-center gap-0 bg-neutral-800 rounded-full scale-90">
-                                <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" /></svg>
+                      <div key={item.id} className="relative">
+                        <div className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
+                          <div className="relative">
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt={item.name} className="w-full aspect-square object-cover" />
+                            ) : placeholder("aspect-square")}
+                            {badge}
+                          </div>
+                          <div className="p-3">
+                            <h3 className="font-bold text-white text-sm leading-tight mb-2">{item.name}</h3>
+                            <div className="flex items-center justify-between">
+                              <span className="text-amber-400 font-extrabold text-base">{item.price.toFixed(0)} TL</span>
+                              {qty > 0 && !hasOpts ? (
+                                <div className="flex items-center gap-0 bg-neutral-800 rounded-full scale-90">
+                                  <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" /></svg>
+                                  </button>
+                                  <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
+                                  <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                                  </button>
+                                </div>
+                              ) : (
+                                <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="bg-amber-500 active:scale-95 text-black font-bold text-xs px-3 py-1.5 rounded-full">
+                                  Ekle
                                 </button>
-                                <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
-                                <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <button onClick={(e) => { e.stopPropagation(); handleItemClick(item); }} className="bg-amber-500 active:scale-95 text-black font-bold text-xs px-3 py-1.5 rounded-full">
-                                Ekle
-                              </button>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
+                        {popupOverlay}
                       </div>
                     );
                   }
 
                   return (
-                    <div key={item.id} className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
-                      <div className="flex">
-                        <div className="flex-1 p-4 flex flex-col justify-between min-h-[120px]">
-                          <div>
-                            <h3 className="font-bold text-white text-[15px] leading-tight mb-1">{item.name}</h3>
-                            {item.description && <p className="text-white/40 text-xs leading-relaxed line-clamp-2">{item.description}</p>}
-                          </div>
-                          <div className="flex items-center justify-between mt-3">
-                            <span className="text-amber-400 font-extrabold text-lg">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
-                            {qtyControl}
-                          </div>
-                        </div>
-                        <div className="w-[130px] shrink-0 relative overflow-hidden">
-                          {item.imageUrl ? (
-                            <>
-                              <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover min-h-[120px]" />
-                              <div className="absolute inset-0 bg-gradient-to-r from-neutral-900 via-transparent to-transparent w-8" />
-                            </>
-                          ) : (
-                            <div className={`w-full h-full bg-gradient-to-br ${catColor} flex items-center justify-center min-h-[120px]`}>
-                              <span className="text-3xl opacity-40">{CATEGORY_ICONS[cat.name] || "\u{1F37D}\u{FE0F}"}</span>
+                    <div key={item.id} className="relative">
+                      <div className={`bg-neutral-900 rounded-2xl overflow-hidden border transition-all ${qty > 0 ? "border-amber-500/40 shadow-lg shadow-amber-500/5" : "border-neutral-800/60"}`}>
+                        <div className="flex">
+                          <div className="flex-1 p-4 flex flex-col justify-between min-h-[120px]">
+                            <div>
+                              <h3 className="font-bold text-white text-[15px] leading-tight mb-1">{item.name}</h3>
+                              {item.description && <p className="text-white/40 text-xs leading-relaxed line-clamp-2">{item.description}</p>}
                             </div>
-                          )}
-                          {badge}
+                            <div className="flex items-center justify-between mt-3">
+                              <span className="text-amber-400 font-extrabold text-lg">{item.price.toFixed(0)} <span className="text-sm font-bold">TL</span></span>
+                              {qtyControl}
+                            </div>
+                          </div>
+                          <div className="w-[130px] shrink-0 relative overflow-hidden">
+                            {item.imageUrl ? (
+                              <>
+                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover min-h-[120px]" />
+                                <div className="absolute inset-0 bg-gradient-to-r from-neutral-900 via-transparent to-transparent w-8" />
+                              </>
+                            ) : (
+                              <div className={`w-full h-full bg-gradient-to-br ${catColor} flex items-center justify-center min-h-[120px]`}>
+                                <span className="text-3xl opacity-40">{CATEGORY_ICONS[cat.name] || "\u{1F37D}\u{FE0F}"}</span>
+                              </div>
+                            )}
+                            {badge}
+                          </div>
                         </div>
                       </div>
+                      {popupOverlay}
                     </div>
                   );
                 })}
@@ -792,6 +873,8 @@ function SiparisContent() {
           );
         })}
       </div>
+
+      {customizeItem && <div className="fixed inset-0 z-30" onClick={() => setCustomizeItem(null)} />}
 
       {/* Floating Cart Bar */}
       {cartCount > 0 && !showCart && (
@@ -911,14 +994,6 @@ function SiparisContent() {
           </div>
         </div>
       )}
-
-      {/* Customize Modal */}
-      <ItemCustomizeModal
-        item={customizeItem}
-        options={options}
-        onClose={() => setCustomizeItem(null)}
-        onAdd={handleCustomizedAdd}
-      />
 
       <style jsx>{`
         @keyframes slide-up {

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const { phone } = await req.json();
   if (!phone?.trim()) {
     return NextResponse.json({ error: "Telefon gerekli" }, { status: 400 });
@@ -34,6 +37,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const { phone, name, address, latitude, longitude } = await req.json();
   if (!phone?.trim() || !name?.trim()) {
     return NextResponse.json({ error: "Telefon ve isim gerekli" }, { status: 400 });

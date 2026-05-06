@@ -32,5 +32,10 @@ export function closeDb() {
   }
 }
 
+export function getSqliteDb() {
+  getDb();
+  return sqlite!;
+}
+
 export type Db = ReturnType<typeof getDb>;
 export { schema };

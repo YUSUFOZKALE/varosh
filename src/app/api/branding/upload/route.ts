@@ -4,11 +4,14 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import { sql } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
 const MAX_SIZE = 5 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const formData = await req.formData();
   const file = formData.get("image") as File | null;
   const type = formData.get("type") as string | null;

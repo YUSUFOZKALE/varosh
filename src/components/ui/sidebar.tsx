@@ -14,6 +14,7 @@ const NAV: NavItem[] = [
   { href: "/kitchen", label: "Mutfak", icon: "\u{1F468}\u{200D}\u{1F373}", roles: ["owner", "cook"] },
   { href: "/menu", label: "Menu", icon: "\u{1F37D}️", roles: ["owner"] },
   { href: "/cashier", label: "Kasa", icon: "\u{1F4B0}", roles: ["owner", "cashier"] },
+  { href: "/kasa", label: "Muhasebe", icon: "\u{1F4B3}", roles: ["owner"] },
   { href: "/stock", label: "Stok", icon: "\u{1F4E6}", roles: ["owner"] },
   { href: "/customers", label: "Musteriler", icon: "\u{1F465}", roles: ["owner"] },
   { href: "/delivery", label: "Teslimat", icon: "\u{1F6F5}", roles: ["owner", "courier"] },

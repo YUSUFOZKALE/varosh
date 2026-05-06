@@ -210,15 +210,13 @@ export default function ItemCustomizeModal({ item, options, onClose, onAdd }: Pr
 
   return (
     <>
-      {/* Mobile: bottom sheet */}
-      <div className="fixed inset-0 z-50 flex flex-col lg:hidden">
-        <div className="flex-1 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-        <div className="bg-neutral-900 rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto animate-slide-up">
+      <div className="fixed inset-0 z-50 flex flex-col">
+        <div className="flex-1 bg-black/60" onClick={onClose} />
+        <div className="bg-neutral-900 border-t border-amber-500/30 rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto max-w-sm mx-auto w-full animate-slide-up">
           <CustomizeContent item={item} options={options} onClose={onClose} onAdd={onAdd} />
         </div>
       </div>
 
-      {/* Desktop: inline panel rendered via portal — see POS page */}
       <style jsx>{`
         @keyframes slide-up {
           from { transform: translateY(100%); }

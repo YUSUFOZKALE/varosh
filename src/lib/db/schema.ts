@@ -1021,3 +1021,42 @@ export const cashRegister = sqliteTable("cash_register", {
   description: text("description"),
   createdAt: text("created_at").default(sql`(datetime('now','localtime'))`).notNull(),
 });
+
+// ============================================================
+// KASA & MUHASEBE
+// ============================================================
+
+export const kasaTransactions = sqliteTable("kasa_transactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  type: text("type", { enum: ["income", "expense", "trust", "staff_payment"] }).notNull(),
+  amount: real("amount").notNull(),
+  paymentMethod: text("payment_method", { enum: ["cash", "card"] }),
+  category: text("category"),
+  description: text("description"),
+  person: text("person"),
+  courierId: integer("courier_id").references(() => staff.id),
+  relatedOrderId: integer("related_order_id").references(() => orders.id),
+  isReturned: integer("is_returned", { mode: "boolean" }).default(false).notNull(),
+  returnedAt: text("returned_at"),
+  createdBy: integer("created_by").references(() => staff.id),
+  createdAt: text("created_at").default(sql`(datetime('now','localtime'))`).notNull(),
+});
+
+export const dailySummaries = sqliteTable("daily_summaries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  date: text("date").notNull().unique(),
+  cashIncome: real("cash_income").default(0).notNull(),
+  cardIncome: real("card_income").default(0).notNull(),
+  totalExpense: real("total_expense").default(0).notNull(),
+  netBalance: real("net_balance").default(0).notNull(),
+  courierCashCollected: real("courier_cash_collected").default(0).notNull(),
+  trustGiven: real("trust_given").default(0).notNull(),
+  trustReturned: real("trust_returned").default(0).notNull(),
+  staffPayments: real("staff_payments").default(0).notNull(),
+  openingCash: real("opening_cash").default(0).notNull(),
+  closingCash: real("closing_cash"),
+  isClosed: integer("is_closed", { mode: "boolean" }).default(false).notNull(),
+  closedBy: integer("closed_by").references(() => staff.id),
+  notes: text("notes"),
+  createdAt: text("created_at").default(sql`(datetime('now','localtime'))`).notNull(),
+});

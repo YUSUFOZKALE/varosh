@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, schema } from "@/lib/db";
+import { getDb, getSqliteDb, schema } from "@/lib/db";
 import { desc, eq, and, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { getDeliveryFee } from "@/lib/settings";
 import { updateCustomerStats, findOrCreateCustomer } from "@/lib/customer-stats";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
+  const customerSources = ["qr", "whatsapp", "yemeksepeti", "getir"];
+  if (!customerSources.includes(body.source)) {
+    const session = getSession();
+    if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
+  }
   const db = getDb();
 
   const {
@@ -153,52 +159,56 @@ export async function POST(req: NextRequest) {
   const total = subtotal + deliveryFee;
   const trackingToken = crypto.randomBytes(16).toString("hex");
 
-  if (tableNumber && !deliveryAddress) {
-    const openSession = db
-      .select()
-      .from(schema.tableSessions)
-      .where(
-        and(
-          eq(schema.tableSessions.tableNumber, tableNumber),
-          eq(schema.tableSessions.status, "open")
+  const sqlite = getSqliteDb();
+  const order = sqlite.transaction(() => {
+    if (tableNumber && !deliveryAddress) {
+      const openSession = db
+        .select()
+        .from(schema.tableSessions)
+        .where(
+          and(
+            eq(schema.tableSessions.tableNumber, tableNumber),
+            eq(schema.tableSessions.status, "open")
+          )
         )
-      )
+        .get();
+      if (!openSession) {
+        db.insert(schema.tableSessions)
+          .values({ tableNumber, status: "open", total: 0 })
+          .run();
+      }
+    }
+
+    const newOrder = db.insert(schema.orders)
+      .values({
+        source: source as typeof schema.orders.source.enumValues[number],
+        status: "new",
+        customerName: customerName || null,
+        customerPhone: customerPhone || null,
+        tableNumber: tableNumber || null,
+        deliveryAddress: deliveryAddress || null,
+        paymentMethod: paymentMethod || null,
+        notes: notes || null,
+        subtotal,
+        deliveryFee,
+        total,
+        trackingToken,
+      })
+      .returning()
       .get();
-    if (!openSession) {
-      db.insert(schema.tableSessions)
-        .values({ tableNumber, status: "open", total: 0 })
+
+    for (const oi of orderItems) {
+      db.insert(schema.orderItems)
+        .values({ orderId: newOrder.id, ...oi })
         .run();
     }
-  }
 
-  const order = db.insert(schema.orders)
-    .values({
-      source: source as typeof schema.orders.source.enumValues[number],
-      status: "new",
-      customerName: customerName || null,
-      customerPhone: customerPhone || null,
-      tableNumber: tableNumber || null,
-      deliveryAddress: deliveryAddress || null,
-      paymentMethod: paymentMethod || null,
-      notes: notes || null,
-      subtotal,
-      deliveryFee,
-      total,
-      trackingToken,
-    })
-    .returning()
-    .get();
+    if (customerPhone) {
+      findOrCreateCustomer(customerPhone, customerName);
+    }
 
-  for (const oi of orderItems) {
-    db.insert(schema.orderItems)
-      .values({ orderId: order.id, ...oi })
-      .run();
-  }
-
-  if (customerPhone) {
-    findOrCreateCustomer(customerPhone, customerName);
-    updateCustomerStats(customerPhone, total);
-  }
+    return newOrder;
+  })();
 
   return NextResponse.json(order, { status: 201 });
 }

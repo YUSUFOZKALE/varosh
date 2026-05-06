@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { getBusinessName } from "@/lib/settings";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,8 @@ export async function GET() {
 }
 
 export async function POST() {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const dbPath = path.resolve(process.env.DATABASE_URL || "./varosh.db");
   const backupDir = path.resolve("./backups");
 

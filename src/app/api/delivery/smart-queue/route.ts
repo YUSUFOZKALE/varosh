@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, sql, inArray } from "drizzle-orm";
 import { getShopLocation } from "@/lib/settings";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -155,6 +156,8 @@ export async function GET() {
 
 // Toplu kabul: bir kümedeki tüm siparişleri "preparing" yap
 export async function POST(req: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const { orderIds } = await req.json();
   if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
     return NextResponse.json({ error: "orderIds gerekli" }, { status: 400 });

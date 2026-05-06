@@ -1,41 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, schema } from "@/lib/db";
-import { eq, sql } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
+import { recordPayment } from "@/lib/payment";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
+
   const id = parseInt(params.id);
+  if (isNaN(id)) return NextResponse.json({ error: "Gecersiz ID" }, { status: 400 });
+
   const { paymentMethod } = await req.json();
-  const db = getDb();
+  const result = recordPayment({
+    orderId: id,
+    method: paymentMethod,
+    staffId: session.staffId,
+  });
 
-  const order = db.select().from(schema.orders).where(eq(schema.orders.id, id)).get();
-  if (!order) return NextResponse.json({ error: "Siparis bulunamadi" }, { status: 404 });
-
-  db.update(schema.orders)
-    .set({
-      paymentMethod,
-      paymentConfirmedAt: sql`(datetime('now','localtime'))`,
-    })
-    .where(eq(schema.orders.id, id))
-    .run();
-
-  db.insert(schema.payments)
-    .values({
-      orderId: id,
-      amount: order.total,
-      method: paymentMethod,
-      receivedAmount: order.total,
-      changeGiven: 0,
-    })
-    .run();
-
-  db.insert(schema.cashRegister)
-    .values({
-      type: "sale",
-      amount: order.total,
-      orderId: id,
-      description: `Siparis #${id} - ${paymentMethod}`,
-    })
-    .run();
-
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
   return NextResponse.json({ ok: true });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, asc, sql } from "drizzle-orm";
 import crypto from "node:crypto";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const body = await request.json();
   const db = getDb();
 

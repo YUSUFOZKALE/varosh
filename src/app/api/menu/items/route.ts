@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { asc, eq, sql } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const body = await req.json();
   const { name, categoryId, price, deliveryPrice, description, prepTimeMinutes = 10, isAvailable = true } = body;
 
@@ -49,6 +52,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const { items } = await req.json();
   if (!Array.isArray(items)) {
     return NextResponse.json({ error: "items dizisi gerekli" }, { status: 400 });

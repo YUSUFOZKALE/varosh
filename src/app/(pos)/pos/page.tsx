@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { type MenuItemOption } from "@/components/item-customize-modal";
 import { usePublicSettings } from "@/hooks/use-public-settings";
+import { useToast } from "@/hooks/useToast";
+import { ToastContainer } from "@/components/ToastContainer";
 
 interface Category { id: number; name: string; }
 interface MenuItem { id: number; categoryId: number; name: string; price: number; deliveryPrice: number | null; isAvailable: boolean; prepTimeMinutes: number; imageUrl: string | null; description: string | null; }
@@ -51,35 +53,39 @@ export default function PosPage() {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [isScrolling, setIsScrolling] = useState(false);
 
+  const toast = useToast();
+
   const load = useCallback(async () => {
-    const [cRes, iRes, custRes, setRes, optRes, ordRes] = await Promise.all([
-      fetch("/api/menu/categories"),
-      fetch("/api/menu/items"),
-      fetch("/api/customers"),
-      fetch("/api/settings"),
-      fetch("/api/menu/options"),
-      fetch("/api/orders?limit=100"),
-    ]);
-    const cats = await cRes.json();
-    setCategories(cats);
-    setItems(await iRes.json());
-    setCustomers(await custRes.json());
     try {
-      const settings: { key: string; value: string }[] = await setRes.json();
-      const feeEnabled = settings.find((s) => s.key === "delivery_fee_enabled");
-      if (feeEnabled?.value === "true") {
-        const fee = settings.find((s) => s.key === "default_delivery_fee");
-        if (fee) setDeliveryFeeAmount(parseFloat(fee.value));
-      } else {
-        setDeliveryFeeAmount(0);
-      }
+      const [cRes, iRes, custRes, setRes, optRes, ordRes] = await Promise.all([
+        fetch("/api/menu/categories"),
+        fetch("/api/menu/items"),
+        fetch("/api/customers"),
+        fetch("/api/settings"),
+        fetch("/api/menu/options"),
+        fetch("/api/orders?limit=100"),
+      ]);
+      const cats = await cRes.json();
+      setCategories(cats);
+      setItems(await iRes.json());
+      setCustomers(await custRes.json());
+      try {
+        const settings: { key: string; value: string }[] = await setRes.json();
+        const feeEnabled = settings.find((s) => s.key === "delivery_fee_enabled");
+        if (feeEnabled?.value === "true") {
+          const fee = settings.find((s) => s.key === "default_delivery_fee");
+          if (fee) setDeliveryFeeAmount(parseFloat(fee.value));
+        } else {
+          setDeliveryFeeAmount(0);
+        }
+      } catch {}
+      try { setOptions(await optRes.json()); } catch {}
+      try {
+        const allOrders: OpenOrder[] = await ordRes.json();
+        setOpenOrders(allOrders.filter((o) => !o.paymentConfirmedAt && o.status !== "cancelled"));
+      } catch {}
+      if (cats.length > 0 && !selectedCat) setSelectedCat(cats[0].id);
     } catch {}
-    try { setOptions(await optRes.json()); } catch {}
-    try {
-      const allOrders: OpenOrder[] = await ordRes.json();
-      setOpenOrders(allOrders.filter((o) => !o.paymentConfirmedAt && o.status !== "cancelled"));
-    } catch {}
-    if (cats.length > 0 && !selectedCat) setSelectedCat(cats[0].id);
   }, [selectedCat]);
 
   function selectCustomer(c: Customer) {
@@ -218,32 +224,38 @@ export default function PosPage() {
     if (cart.length === 0) return;
     setSending(true);
 
-    const source = (orderType === "delivery" || orderType === "takeaway") && customerPhone ? "phone" : "manual";
+    try {
+      const source = (orderType === "delivery" || orderType === "takeaway") && customerPhone ? "phone" : "manual";
 
-    const body: Record<string, unknown> = {
-      source,
-      customerName: customerName || undefined,
-      customerPhone: customerPhone || undefined,
-      notes: notes || undefined,
-      items: cart.map((c) => ({
-        menuItemId: c.menuItemId,
-        quantity: c.quantity,
-        selectedOptions: c.selectedExtras.length > 0 ? c.selectedExtras : undefined,
-        removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
-        notes: c.notes || undefined,
-      })),
-    };
+      const body: Record<string, unknown> = {
+        source,
+        customerName: customerName || undefined,
+        customerPhone: customerPhone || undefined,
+        notes: notes || undefined,
+        items: cart.map((c) => ({
+          menuItemId: c.menuItemId,
+          quantity: c.quantity,
+          selectedOptions: c.selectedExtras.length > 0 ? c.selectedExtras : undefined,
+          removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
+          notes: c.notes || undefined,
+        })),
+      };
 
-    if (orderType === "dine_in" && tableNumber) body.tableNumber = parseInt(tableNumber);
-    if (orderType === "delivery" && deliveryAddress) body.deliveryAddress = deliveryAddress;
+      if (orderType === "dine_in" && tableNumber) body.tableNumber = parseInt(tableNumber);
+      if (orderType === "delivery" && deliveryAddress) body.deliveryAddress = deliveryAddress;
 
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-    if (res.ok) {
+      if (!res.ok) {
+        toast.error("Siparis gonderilemedi");
+        setSending(false);
+        return;
+      }
+
       const order = await res.json();
       setCompletedOrder({
         id: order.id,
@@ -261,7 +273,10 @@ export default function PosPage() {
       setDeliveryAddress("");
       setTableNumber("");
       setNotes("");
+      toast.success(`Siparis #${order.id} basariyla olusturuldu`);
       setTimeout(() => setCompletedOrder(null), 3000);
+    } catch {
+      toast.error("Siparis gonderilirken bir hata olustu");
     }
     setSending(false);
   }
@@ -281,21 +296,32 @@ export default function PosPage() {
 
   async function collectPayment(orderId: number, method: "cash" | "card") {
     setPayingBill(true);
-    await fetch(`/api/orders/${orderId}/payment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentMethod: method }),
-    });
+    try {
+      const res = await fetch(`/api/orders/${orderId}/payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: method }),
+      });
+      if (!res.ok) {
+        toast.error("Odeme alinamadi");
+        setPayingBill(false);
+        return;
+      }
+      toast.success(`Siparis #${orderId} odendi`);
+      setBillDetail(null);
+      setShowBills(false);
+      load();
+    } catch {
+      toast.error("Odeme islemi sirasinda bir hata olustu");
+    }
     setPayingBill(false);
-    setBillDetail(null);
-    setShowBills(false);
-    load();
   }
 
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   return (
     <div className="flex h-screen bg-neutral-950">
+      <ToastContainer toasts={toast.toasts} />
       {/* Left: Menu */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
@@ -362,152 +388,104 @@ export default function PosPage() {
                     const custExtrasCost = isExpanded ? extraOpts.filter((o) => custExtras.has(o.id)).reduce((s, o) => s + o.priceModifier, 0) : 0;
                     const custTotal = isExpanded ? (customizeItem!.price + custExtrasCost) * custQty : 0;
 
-                    if (isExpanded) {
-                      return (
-                        <div key={item.id} className="col-span-2 bg-neutral-900 border-2 border-amber-500/60 rounded-2xl overflow-hidden shadow-xl shadow-amber-500/10">
-                          {/* Header: name + price + close */}
-                          <div className="flex items-center gap-3 px-3 py-2.5 border-b border-neutral-800/60">
-                            {item.imageUrl && (
-                              <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-bold text-white text-sm leading-tight truncate">{item.name}</h3>
-                            </div>
-                            <span className="text-amber-400 font-extrabold text-base shrink-0">{getEffectivePrice(item)} TL</span>
-                            <button
-                              onClick={() => setCustomizeItem(null)}
-                              className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 hover:text-white shrink-0"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                          </div>
-
-                          {/* Body: compact customization */}
-                          <div className="px-3 py-2.5 space-y-2">
-                            {/* Ingredients */}
-                            {ingredients.length > 0 && (
-                              <div>
-                                <p className="text-[10px] font-bold text-white/30 mb-1 uppercase tracking-wider">Icindekiler</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {ingredients.map((ing) => {
-                                    const isRem = custRemoved.has(ing.optionName);
-                                    return (
-                                      <button
-                                        key={ing.id}
-                                        onClick={() => setCustRemoved((prev) => { const n = new Set(prev); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })}
-                                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                                          isRem
-                                            ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20"
-                                            : "bg-neutral-800 text-white/70 border border-neutral-700/50 hover:border-red-500/30"
-                                        }`}
-                                      >
-                                        {isRem && "✕ "}{ing.optionName}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Extras */}
-                            {extraOpts.length > 0 && (
-                              <div>
-                                <p className="text-[10px] font-bold text-white/30 mb-1 uppercase tracking-wider">Ekstralar</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {extraOpts.map((ext) => {
-                                    const isSel = custExtras.has(ext.id);
-                                    return (
-                                      <button
-                                        key={ext.id}
-                                        onClick={() => setCustExtras((prev) => { const n = new Set(prev); if (n.has(ext.id)) n.delete(ext.id); else n.add(ext.id); return n; })}
-                                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                                          isSel
-                                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                                            : "bg-neutral-800 text-white/70 border border-neutral-700/50 hover:border-amber-500/30"
-                                        }`}
-                                      >
-                                        {ext.optionName} <span className={isSel ? "text-amber-400" : "text-white/30"}>+{ext.priceModifier}</span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Notes */}
-                            <input
-                              value={custNotes}
-                              onChange={(e) => setCustNotes(e.target.value)}
-                              placeholder="Not: Az pismis, bol soslu..."
-                              className="w-full bg-neutral-800/60 text-white rounded-lg px-2.5 py-1.5 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20"
-                            />
-
-                            {/* Qty + Add — left aligned */}
-                            <div className="flex items-center gap-3 pt-1">
-                              <div className="flex items-center bg-neutral-800 rounded-full">
-                                <button
-                                  onClick={() => setCustQty(Math.max(1, custQty - 1))}
-                                  className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 active:bg-neutral-700 text-sm font-bold"
-                                >−</button>
-                                <span className="text-white font-bold text-sm min-w-[22px] text-center">{custQty}</span>
-                                <button
-                                  onClick={() => setCustQty(custQty + 1)}
-                                  className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400 text-sm font-bold"
-                                >+</button>
-                              </div>
-                              <button
-                                onClick={addCustomizedToCart}
-                                className="px-4 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs active:scale-[0.97] transition-transform shadow-lg shadow-amber-500/20"
-                              >
-                                Ekle &middot; {custTotal.toFixed(0)} TL
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => handleItemClick(item)}
-                        className={`relative bg-neutral-900 border rounded-2xl overflow-hidden text-left transition-all active:scale-[0.97] ${
-                          qty > 0
-                            ? "border-amber-500/50 shadow-lg shadow-amber-500/10"
-                            : "border-neutral-800/60 hover:border-neutral-700"
-                        }`}
-                      >
-                        {item.imageUrl && (
-                          <div className="relative">
-                            <img src={item.imageUrl} alt={item.name} className="w-full h-28 object-cover" />
-                            {qty > 0 && (
-                              <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
-                                {qty}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {!item.imageUrl && qty > 0 && (
-                          <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
-                            {qty}
-                          </div>
-                        )}
-                        <div className="p-3">
-                          <p className="font-semibold text-sm mb-1 line-clamp-2 text-white/90">{item.name}</p>
-                          {item.description && (
-                            <p className="text-white/30 text-[11px] mb-2 line-clamp-1">{item.description}</p>
+                      <div key={item.id} className="relative">
+                        <button
+                          onClick={() => handleItemClick(item)}
+                          className={`w-full relative bg-neutral-900 border rounded-2xl overflow-hidden text-left transition-all active:scale-[0.97] ${
+                            qty > 0
+                              ? "border-amber-500/50 shadow-lg shadow-amber-500/10"
+                              : "border-neutral-800/60 hover:border-neutral-700"
+                          }`}
+                        >
+                          {item.imageUrl && (
+                            <div className="relative">
+                              <img src={item.imageUrl} alt={item.name} className="w-full h-28 object-cover" />
+                              {qty > 0 && (
+                                <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
+                                  {qty}
+                                </div>
+                              )}
+                            </div>
                           )}
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-amber-400 font-extrabold text-lg">{getEffectivePrice(item)}</span>
-                            <span className="text-amber-400/60 text-xs font-semibold">TL</span>
-                            {item.deliveryPrice && item.deliveryPrice !== item.price && (
-                              <span className="text-white/20 text-[10px] ml-auto">
-                                {orderType === "dine_in" ? `Paket ${item.deliveryPrice}` : `Mekan ${item.price}`} TL
-                              </span>
+                          {!item.imageUrl && qty > 0 && (
+                            <div className="absolute top-2 right-2 bg-amber-500 text-black text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
+                              {qty}
+                            </div>
+                          )}
+                          <div className="p-3">
+                            <p className="font-semibold text-sm mb-1 line-clamp-2 text-white/90">{item.name}</p>
+                            {item.description && (
+                              <p className="text-white/30 text-[11px] mb-2 line-clamp-1">{item.description}</p>
                             )}
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-amber-400 font-extrabold text-lg">{getEffectivePrice(item)}</span>
+                              <span className="text-amber-400/60 text-xs font-semibold">TL</span>
+                              {item.deliveryPrice && item.deliveryPrice !== item.price && (
+                                <span className="text-white/20 text-[10px] ml-auto">
+                                  {orderType === "dine_in" ? `Paket ${item.deliveryPrice}` : `Mekan ${item.price}`} TL
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </button>
+                        </button>
+                        {isExpanded && (
+                          <div className="absolute inset-x-0 top-0 z-40 bg-neutral-900 border-2 border-amber-500/60 rounded-2xl overflow-hidden shadow-2xl shadow-black/40">
+                            <div className="px-3 py-2 border-b border-neutral-800/60">
+                              <div className="flex items-center justify-between">
+                                <h3 className="font-bold text-white text-base leading-tight">{item.name}</h3>
+                                <button onClick={() => setCustomizeItem(null)} className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 hover:text-white shrink-0">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </div>
+                              <span className="text-amber-400 font-extrabold text-lg">{getEffectivePrice(item)} TL</span>
+                            </div>
+                            <div className="px-3 py-2 space-y-2 max-h-[50vh] overflow-y-auto">
+                              {ingredients.length > 0 && (
+                                <div>
+                                  <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">Icindekiler</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {ingredients.map((ing) => {
+                                      const isRem = custRemoved.has(ing.optionName);
+                                      return (
+                                        <button key={ing.id} onClick={() => setCustRemoved((prev) => { const n = new Set(prev); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${isRem ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                                          {isRem && "✕ "}{ing.optionName}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {extraOpts.length > 0 && (
+                                <div>
+                                  <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">Ekstralar</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {extraOpts.map((ext) => {
+                                      const isSel = custExtras.has(ext.id);
+                                      return (
+                                        <button key={ext.id} onClick={() => setCustExtras((prev) => { const n = new Set(prev); if (n.has(ext.id)) n.delete(ext.id); else n.add(ext.id); return n; })} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${isSel ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                                          {ext.optionName} <span className={isSel ? "text-amber-400" : "text-white/30"}>+{ext.priceModifier}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              <textarea value={custNotes} onChange={(e) => setCustNotes(e.target.value)} placeholder="Not..." rows={2} className="w-full bg-neutral-800/60 text-white rounded-lg px-2.5 py-1.5 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20 resize-none overflow-y-auto" />
+                              <div className="flex items-center gap-2 pt-1">
+                                <div className="flex items-center bg-neutral-800 rounded-full shrink-0">
+                                  <button onClick={() => setCustQty(Math.max(1, custQty - 1))} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 text-sm font-bold">−</button>
+                                  <span className="text-white font-bold text-sm min-w-[20px] text-center">{custQty}</span>
+                                  <button onClick={() => setCustQty(custQty + 1)} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black text-sm font-bold">+</button>
+                                </div>
+                                <button onClick={addCustomizedToCart} className="flex-1 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs active:scale-[0.97]">
+                                  Ekle {custQty}x {custTotal.toFixed(0)} TL
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -515,6 +493,7 @@ export default function PosPage() {
             );
           })}
         </div>
+        {customizeItem && <div className="fixed inset-0 z-30" onClick={() => setCustomizeItem(null)} />}
       </div>
 
       {/* Right: Cart Panel */}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const tableId = parseInt(params.id);
   if (!tableId) return NextResponse.json({ error: "Gecersiz ID" }, { status: 400 });
 
@@ -24,6 +27,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const tableId = parseInt(params.id);
   if (!tableId) return NextResponse.json({ error: "Gecersiz ID" }, { status: 400 });
 

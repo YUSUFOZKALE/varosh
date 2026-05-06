@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/hooks/useToast";
+import { ToastContainer } from "@/components/ToastContainer";
 
 interface Order {
   id: number;
@@ -104,6 +106,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default function CashierPage() {
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>("orders");
 
   const [tableSessions, setTableSessions] = useState<TableSessionData[]>([]);
@@ -143,35 +146,47 @@ export default function CashierPage() {
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split("T")[0]);
 
   const loadSessions = useCallback(async () => {
-    const res = await fetch("/api/tables/sessions/open");
-    const data = await res.json();
-    setTableSessions(data.sessions || []);
+    try {
+      const res = await fetch("/api/tables/sessions/open");
+      const data = await res.json();
+      setTableSessions(data.sessions || []);
+    } catch {}
   }, []);
 
   const loadPackages = useCallback(async () => {
-    const res = await fetch("/api/orders?limit=100&items=true");
-    const orders: Order[] = await res.json();
-    setPackageOrders(orders.filter((o) => !o.paymentMethod && o.status !== "cancelled" && !o.tableNumber));
+    try {
+      const res = await fetch("/api/orders?limit=100&items=true");
+      const orders: Order[] = await res.json();
+      setPackageOrders(orders.filter((o) => !o.paymentMethod && o.status !== "cancelled" && !o.tableNumber));
+    } catch {}
   }, []);
 
   const loadCourierPending = useCallback(async () => {
-    const res = await fetch("/api/payments/courier-pending");
-    if (res.ok) setCourierGroups(await res.json());
+    try {
+      const res = await fetch("/api/payments/courier-pending");
+      if (res.ok) setCourierGroups(await res.json());
+    } catch {}
   }, []);
 
   const loadRegister = useCallback(async () => {
-    const res = await fetch("/api/payments/cash-register");
-    setRegister(await res.json());
+    try {
+      const res = await fetch("/api/payments/cash-register");
+      setRegister(await res.json());
+    } catch {}
   }, []);
 
   const loadZReport = useCallback(async () => {
-    const res = await fetch(`/api/payments/z-report?date=${zDate}`);
-    setZReport(await res.json());
+    try {
+      const res = await fetch(`/api/payments/z-report?date=${zDate}`);
+      setZReport(await res.json());
+    } catch {}
   }, [zDate]);
 
   const loadExpenses = useCallback(async () => {
-    const res = await fetch(`/api/expenses?date=${expenseDate}`);
-    setExpenses(await res.json());
+    try {
+      const res = await fetch(`/api/expenses?date=${expenseDate}`);
+      setExpenses(await res.json());
+    } catch {}
   }, [expenseDate]);
 
   function loadAll() {
@@ -203,35 +218,47 @@ export default function CashierPage() {
   }
 
   async function refreshTableDetail(tableNumber: number) {
-    await loadSessions();
-    const sessRes = await fetch("/api/tables/sessions/open");
-    const sessData = await sessRes.json();
-    const found = (sessData.sessions || []).find((s: TableSessionData) => s.session.tableNumber === tableNumber);
-    if (found) {
-      setSelectedTable(found);
-      const unpaidTotal = found.orders.filter((o: SessionOrder) => !o.paymentMethod).reduce((s: number, o: SessionOrder) => s + o.total, 0);
-      setChargedAmount(unpaidTotal.toFixed(0));
-    } else {
-      setSelectedTable(null);
-    }
+    try {
+      await loadSessions();
+      const sessRes = await fetch("/api/tables/sessions/open");
+      const sessData = await sessRes.json();
+      const found = (sessData.sessions || []).find((s: TableSessionData) => s.session.tableNumber === tableNumber);
+      if (found) {
+        setSelectedTable(found);
+        const unpaidTotal = found.orders.filter((o: SessionOrder) => !o.paymentMethod).reduce((s: number, o: SessionOrder) => s + o.total, 0);
+        setChargedAmount(unpaidTotal.toFixed(0));
+      } else {
+        setSelectedTable(null);
+      }
+    } catch {}
   }
 
   async function removeItem(orderId: number, itemId: number) {
-    await fetch(`/api/orders/${orderId}/items`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ removeItemId: itemId }),
-    });
-    if (selectedTable) refreshTableDetail(selectedTable.session.tableNumber);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ removeItemId: itemId }),
+      });
+      if (!res.ok) toast.error("Islem basarisiz");
+      if (selectedTable) refreshTableDetail(selectedTable.session.tableNumber);
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function updateItemQty(orderId: number, itemId: number, qty: number) {
-    await fetch(`/api/orders/${orderId}/items`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ updateItem: { itemId, quantity: qty } }),
-    });
-    if (selectedTable) refreshTableDetail(selectedTable.session.tableNumber);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updateItem: { itemId, quantity: qty } }),
+      });
+      if (!res.ok) toast.error("Islem basarisiz");
+      if (selectedTable) refreshTableDetail(selectedTable.session.tableNumber);
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   // Pay ALL unpaid orders on this table
@@ -243,26 +270,31 @@ export default function CashierPage() {
     const charged = parseFloat(chargedAmount) || 0;
     const received = parseFloat(receivedCash) || charged;
 
-    let remaining = charged;
-    for (let i = 0; i < unpaidOrders.length; i++) {
-      const o = unpaidOrders[i];
-      const isLast = i === unpaidOrders.length - 1;
-      const amt = isLast ? remaining : Math.min(o.total, remaining);
-      await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: o.id,
-          amount: amt,
-          method: payMethod,
-          receivedAmount: isLast ? received : amt,
-        }),
-      });
-      remaining -= amt;
+    try {
+      let remaining = charged;
+      for (let i = 0; i < unpaidOrders.length; i++) {
+        const o = unpaidOrders[i];
+        const isLast = i === unpaidOrders.length - 1;
+        const amt = isLast ? remaining : Math.min(o.total, remaining);
+        const res = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: o.id,
+            amount: amt,
+            method: payMethod,
+            receivedAmount: isLast ? received : amt,
+          }),
+        });
+        if (!res.ok) { toast.error("Islem basarisiz"); return; }
+        remaining -= amt;
+      }
+      toast.success("Odeme alindi");
+      setSelectedTable(null);
+      loadAll();
+    } catch {
+      toast.error("Baglanti hatasi");
     }
-
-    setSelectedTable(null);
-    loadAll();
   }
 
   // Pay a SINGLE order within table
@@ -278,38 +310,49 @@ export default function CashierPage() {
     const charged = parseFloat(singleChargedAmount) || payingSingleOrder.total;
     const received = parseFloat(singleReceivedCash) || charged;
 
-    await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderId: payingSingleOrder.id,
-        amount: charged,
-        method: singlePayMethod,
-        receivedAmount: received,
-      }),
-    });
-
-    setPayingSingleOrder(null);
-    refreshTableDetail(selectedTable.session.tableNumber);
-    loadRegister();
-    loadZReport();
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: payingSingleOrder.id,
+          amount: charged,
+          method: singlePayMethod,
+          receivedAmount: received,
+        }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      toast.success("Odeme alindi");
+      setPayingSingleOrder(null);
+      refreshTableDetail(selectedTable.session.tableNumber);
+      loadRegister();
+      loadZReport();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function quickApproveSingleOrder(order: SessionOrder) {
     if (!selectedTable) return;
-    await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderId: order.id,
-        amount: order.total,
-        method: "cash",
-        receivedAmount: order.total,
-      }),
-    });
-    refreshTableDetail(selectedTable.session.tableNumber);
-    loadRegister();
-    loadZReport();
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order.id,
+          amount: order.total,
+          method: "cash",
+          receivedAmount: order.total,
+        }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      toast.success("Odeme alindi");
+      refreshTableDetail(selectedTable.session.tableNumber);
+      loadRegister();
+      loadZReport();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   // ── Package payment ──
@@ -325,32 +368,44 @@ export default function CashierPage() {
     const charged = parseFloat(chargedAmount) || payingOrder.total;
     const received = parseFloat(receivedCash) || charged;
 
-    await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderId: payingOrder.id,
-        amount: charged,
-        method: payMethod,
-        receivedAmount: received,
-      }),
-    });
-    setPayingOrder(null);
-    loadAll();
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: payingOrder.id,
+          amount: charged,
+          method: payMethod,
+          receivedAmount: received,
+        }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      toast.success("Odeme alindi");
+      setPayingOrder(null);
+      loadAll();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function quickApprovePackage(order: Order) {
-    await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderId: order.id,
-        amount: order.total,
-        method: "cash",
-        receivedAmount: order.total,
-      }),
-    });
-    loadAll();
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order.id,
+          amount: order.total,
+          method: "cash",
+          receivedAmount: order.total,
+        }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      toast.success("Odeme alindi");
+      loadAll();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   // ── Add item to table ──
@@ -358,9 +413,14 @@ export default function CashierPage() {
     setAddItemTable(tableNumber);
     setAddCart([]);
     if (menuCats.length === 0) {
-      const [cRes, iRes] = await Promise.all([fetch("/api/menu/categories"), fetch("/api/menu/items")]);
-      setMenuCats(await cRes.json());
-      setMenuItems(await iRes.json());
+      try {
+        const [cRes, iRes] = await Promise.all([fetch("/api/menu/categories"), fetch("/api/menu/items")]);
+        if (!cRes.ok || !iRes.ok) { toast.error("Islem basarisiz"); return; }
+        setMenuCats(await cRes.json());
+        setMenuItems(await iRes.json());
+      } catch {
+        toast.error("Baglanti hatasi");
+      }
     }
   }
 
@@ -374,21 +434,27 @@ export default function CashierPage() {
 
   async function submitAddItems() {
     if (!addItemTable || addCart.length === 0) return;
-    await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "manual",
-        tableNumber: addItemTable,
-        items: addCart.map((c) => ({ menuItemId: c.menuItemId, quantity: c.qty })),
-      }),
-    });
-    setAddItemTable(null);
-    setAddCart([]);
-    if (selectedTable && selectedTable.session.tableNumber === addItemTable) {
-      refreshTableDetail(addItemTable);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "manual",
+          tableNumber: addItemTable,
+          items: addCart.map((c) => ({ menuItemId: c.menuItemId, quantity: c.qty })),
+        }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      const tbl = addItemTable;
+      setAddItemTable(null);
+      setAddCart([]);
+      if (selectedTable && selectedTable.session.tableNumber === tbl) {
+        refreshTableDetail(tbl);
+      }
+      loadSessions();
+    } catch {
+      toast.error("Baglanti hatasi");
     }
-    loadSessions();
   }
 
   // ── Courier cash collection ──
@@ -414,57 +480,78 @@ export default function CashierPage() {
 
   async function collectCourierCash(method: "cash" | "card") {
     if (selectedCourierOrders.size === 0) return;
-    await fetch("/api/payments/courier-collect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderIds: Array.from(selectedCourierOrders), method }),
-    });
-    setSelectedCourierOrders(new Set());
-    loadAll();
+    try {
+      const res = await fetch("/api/payments/courier-collect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: Array.from(selectedCourierOrders), method }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      toast.success("Odeme alindi");
+      setSelectedCourierOrders(new Set());
+      loadAll();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function submitCourierAdvance(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await fetch("/api/payments/cash-register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "withdrawal",
-        amount: parseFloat(fd.get("amount") as string),
-        description: `Kuryeye nakit - ${fd.get("courierName") || ""}`.trim(),
-      }),
-    });
-    setCourierAdvanceModal(false);
-    loadRegister();
-    loadZReport();
+    try {
+      const res = await fetch("/api/payments/cash-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "withdrawal",
+          amount: parseFloat(fd.get("amount") as string),
+          description: `Kuryeye nakit - ${fd.get("courierName") || ""}`.trim(),
+        }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      setCourierAdvanceModal(false);
+      loadRegister();
+      loadZReport();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   // ── Existing tab handlers ──
   async function addCashMovement(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await fetch("/api/payments/cash-register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: fd.get("type"), amount: parseFloat(fd.get("amount") as string), description: fd.get("description") || null }),
-    });
-    setAddCashModal(false);
-    loadRegister();
-    loadZReport();
+    try {
+      const res = await fetch("/api/payments/cash-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: fd.get("type"), amount: parseFloat(fd.get("amount") as string), description: fd.get("description") || null }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      setAddCashModal(false);
+      loadRegister();
+      loadZReport();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function addExpense(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await fetch("/api/expenses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "expense", category: fd.get("category"), amount: parseFloat(fd.get("amount") as string), description: fd.get("description") || null, date: expenseDate }),
-    });
-    setExpenseModal(false);
-    loadExpenses();
-    loadZReport();
+    try {
+      const res = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "expense", category: fd.get("category"), amount: parseFloat(fd.get("amount") as string), description: fd.get("description") || null, date: expenseDate }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      setExpenseModal(false);
+      loadExpenses();
+      loadZReport();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   const totalBadge = tableSessions.length + packageOrders.length;
@@ -822,49 +909,44 @@ export default function CashierPage() {
 
       {/* ══════════ PACKAGE PAYMENT MODAL ══════════ */}
       {payingOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setPayingOrder(null)}>
-          <div className="bg-neutral-900 rounded-2xl w-full max-w-md mx-4 p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-center">
-              <h3 className="text-lg font-bold">Siparis #{payingOrder.id}</h3>
-              <p className="text-white/40 text-sm">{payingOrder.customerName || "Isimsiz"} — {SOURCE_LABELS[payingOrder.source] || payingOrder.source}</p>
-            </div>
-            <div className="bg-neutral-800/40 rounded-xl p-3 space-y-1.5">
-              <div className="flex justify-between text-sm">
-                <span className="text-white/40">Hesap</span>
-                <span className="text-white/60 font-semibold">{payingOrder.total.toFixed(0)} TL</span>
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setPayingOrder(null)} />
+          <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-[380px] bg-neutral-900 rounded-2xl p-4 space-y-3 border border-neutral-700/50 shadow-2xl shadow-black/60" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-sm">#{payingOrder.id}</span>
+                <span className="ml-2 text-xs text-white/40">{SOURCE_LABELS[payingOrder.source] || payingOrder.source}</span>
               </div>
+              <button onClick={() => setPayingOrder(null)} className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-white text-sm font-semibold shrink-0">Tahsil:</span>
-              <input type="number" value={chargedAmount} onChange={(e) => setChargedAmount(e.target.value)} className="input-field text-lg font-bold text-amber-400 text-center flex-1" />
-              <span className="text-white/40">TL</span>
+            {payingOrder.customerName && <p className="text-white/50 text-xs">{payingOrder.customerName}</p>}
+            <div className="flex items-center gap-2">
+              <span className="text-white/40 text-xs shrink-0">Tahsil:</span>
+              <input type="number" value={chargedAmount} onChange={(e) => setChargedAmount(e.target.value)} className="input-field text-lg font-bold text-amber-400 text-center flex-1 py-2" />
+              <span className="text-white/30 text-sm">/ {payingOrder.total.toFixed(0)} TL</span>
             </div>
             {chargedAmount && parseFloat(chargedAmount) < payingOrder.total && (
-              <p className="text-orange-400/70 text-xs text-center">Indirim: {(payingOrder.total - parseFloat(chargedAmount)).toFixed(0)} TL</p>
+              <p className="text-orange-400/70 text-[11px] text-center">Indirim: {(payingOrder.total - parseFloat(chargedAmount)).toFixed(0)} TL</p>
             )}
             <div className="grid grid-cols-2 gap-2">
-              <label className={`flex items-center justify-center gap-2 p-2.5 rounded-xl cursor-pointer border transition-all ${payMethod === "cash" ? "bg-green-600/20 border-green-500/50" : "bg-surface-2 border-transparent"}`}>
-                <input type="radio" checked={payMethod === "cash"} onChange={() => setPayMethod("cash")} className="hidden" />
-                <span className="font-medium text-sm">Nakit</span>
-              </label>
-              <label className={`flex items-center justify-center gap-2 p-2.5 rounded-xl cursor-pointer border transition-all ${payMethod === "card" ? "bg-blue-600/20 border-blue-500/50" : "bg-surface-2 border-transparent"}`}>
-                <input type="radio" checked={payMethod === "card"} onChange={() => setPayMethod("card")} className="hidden" />
-                <span className="font-medium text-sm">Kart</span>
-              </label>
+              <button onClick={() => setPayMethod("cash")} className={`py-2 rounded-xl text-sm font-bold transition-all ${payMethod === "cash" ? "bg-green-600/20 border border-green-500/50 text-green-300" : "bg-surface-2 text-white/40 border border-transparent"}`}>Nakit</button>
+              <button onClick={() => setPayMethod("card")} className={`py-2 rounded-xl text-sm font-bold transition-all ${payMethod === "card" ? "bg-blue-600/20 border border-blue-500/50 text-blue-300" : "bg-surface-2 text-white/40 border border-transparent"}`}>Kart</button>
             </div>
             {payMethod === "cash" && (
-              <input type="number" placeholder="Alinan nakit..." value={receivedCash} onChange={(e) => setReceivedCash(e.target.value)} className="input-field text-sm" />
+              <input type="number" placeholder="Alinan nakit..." value={receivedCash} onChange={(e) => setReceivedCash(e.target.value)} className="input-field text-sm py-2" />
             )}
             {payMethod === "cash" && receivedCash && parseFloat(receivedCash) > parseFloat(chargedAmount || "0") && (
-              <p className="text-green-400/70 text-xs text-center">Para ustu: {(parseFloat(receivedCash) - parseFloat(chargedAmount || "0")).toFixed(0)} TL</p>
+              <p className="text-green-400/70 text-[11px] text-center">Para ustu: {(parseFloat(receivedCash) - parseFloat(chargedAmount || "0")).toFixed(0)} TL</p>
             )}
             <div className="grid grid-cols-3 gap-2">
-              <button type="button" onClick={() => window.open(`/receipt/${payingOrder.id}`, "_blank")} className="py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/50 font-medium text-sm">Yazdir</button>
-              <button type="button" onClick={() => setPayingOrder(null)} className="py-2.5 rounded-xl bg-neutral-800 text-white/30 font-medium text-sm">Iptal</button>
+              <button type="button" onClick={() => window.open(`/receipt/${payingOrder.id}`, "_blank")} className="py-2.5 rounded-xl bg-neutral-800 text-white/50 font-medium text-xs">Yazdir</button>
+              <button type="button" onClick={() => setPayingOrder(null)} className="py-2.5 rounded-xl bg-neutral-800 text-white/30 font-medium text-xs">Iptal</button>
               <Button onClick={payPackage}>Tahsil Et</Button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* ══════════ ADD ITEM TO TABLE MODAL ══════════ */}
@@ -1018,6 +1100,8 @@ export default function CashierPage() {
           <div className="flex gap-2 justify-end"><Button variant="secondary" type="button" onClick={() => setExpenseModal(false)}>Iptal</Button><Button type="submit">Kaydet</Button></div>
         </form>
       </Modal>
+
+      <ToastContainer toasts={toast.toasts} />
     </div>
   );
 }

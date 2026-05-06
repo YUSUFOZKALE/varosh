@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useToast } from "@/hooks/useToast";
+import { ToastContainer } from "@/components/ToastContainer";
 
 interface Table {
   id: number;
@@ -57,6 +59,8 @@ interface CartItem {
 type View = "tables" | "table-detail" | "menu" | "package-form" | "package-menu" | "gelal-menu";
 
 export default function WaiterPage() {
+  const toast = useToast();
+
   const [tables, setTables] = useState<Table[]>([]);
   const [openTables, setOpenTables] = useState<Set<number>>(new Set());
   const [view, setView] = useState<View>("tables");
@@ -72,6 +76,7 @@ export default function WaiterPage() {
   const [itemNotes, setItemNotes] = useState("");
   const [itemOptions, setItemOptions] = useState<number[]>([]);
   const [itemRemoved, setItemRemoved] = useState<string[]>([]);
+  const [itemQty, setItemQty] = useState(1);
 
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState<"masa" | "gelal" | "paket">("masa");
@@ -85,17 +90,26 @@ export default function WaiterPage() {
   const [pkgSearching, setPkgSearching] = useState(false);
   const phoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Gel-al customer state
+  const [gelalName, setGelalName] = useState("");
+  const [gelalPhone, setGelalPhone] = useState("");
+  const [gelalCustomerFound, setGelalCustomerFound] = useState(false);
+  const [gelalSearching, setGelalSearching] = useState(false);
+  const gelalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const loadTables = useCallback(async () => {
-    const [tRes, sRes] = await Promise.all([
-      fetch("/api/tables"),
-      fetch("/api/tables/sessions/open"),
-    ]);
-    if (tRes.ok) setTables(await tRes.json());
-    if (sRes.ok) {
-      const data = await sRes.json();
-      const openNums = new Set<number>((data.sessions || []).map((s: { session: { tableNumber: number } }) => s.session.tableNumber));
-      setOpenTables(openNums);
-    }
+    try {
+      const [tRes, sRes] = await Promise.all([
+        fetch("/api/tables"),
+        fetch("/api/tables/sessions/open"),
+      ]);
+      if (tRes.ok) setTables(await tRes.json());
+      if (sRes.ok) {
+        const data = await sRes.json();
+        const openNums = new Set<number>((data.sessions || []).map((s: { session: { tableNumber: number } }) => s.session.tableNumber));
+        setOpenTables(openNums);
+      }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -105,8 +119,10 @@ export default function WaiterPage() {
   }, [loadTables]);
 
   async function loadTableDetail(tableNumber: number) {
-    const res = await fetch(`/api/tables/session?table=${tableNumber}`);
-    if (res.ok) setTableSession(await res.json());
+    try {
+      const res = await fetch(`/api/tables/session?table=${tableNumber}`);
+      if (res.ok) setTableSession(await res.json());
+    } catch {}
   }
 
   function openTable(tableNumber: number) {
@@ -117,17 +133,19 @@ export default function WaiterPage() {
 
   async function loadMenu() {
     if (menuCats.length > 0) return;
-    const [cRes, iRes, oRes] = await Promise.all([
-      fetch("/api/menu/categories"),
-      fetch("/api/menu/items"),
-      fetch("/api/menu/options"),
-    ]);
-    const cats: MenuCat[] = await cRes.json();
-    const items: MenuItem[] = await iRes.json();
-    setMenuCats(cats);
-    setMenuItems(items.filter((i) => i.isAvailable));
-    if (oRes.ok) setMenuOptions(await oRes.json());
-    if (cats.length > 0) setActiveCat(cats[0].id);
+    try {
+      const [cRes, iRes, oRes] = await Promise.all([
+        fetch("/api/menu/categories"),
+        fetch("/api/menu/items"),
+        fetch("/api/menu/options"),
+      ]);
+      const cats: MenuCat[] = await cRes.json();
+      const items: MenuItem[] = await iRes.json();
+      setMenuCats(cats);
+      setMenuItems(items.filter((i) => i.isAvailable));
+      if (oRes.ok) setMenuOptions(await oRes.json());
+      if (cats.length > 0) setActiveCat(cats[0].id);
+    } catch {}
   }
 
   function startOrder() {
@@ -181,6 +199,32 @@ export default function WaiterPage() {
     setView("package-menu");
   }
 
+  function handleGelalPhoneChange(value: string) {
+    setGelalPhone(value);
+    setGelalCustomerFound(false);
+    if (gelalTimerRef.current) clearTimeout(gelalTimerRef.current);
+    const digits = value.replace(/\D/g, "");
+    if (digits.length >= 10) {
+      gelalTimerRef.current = setTimeout(() => lookupGelalCustomer(digits), 400);
+    }
+  }
+
+  async function lookupGelalCustomer(phone: string) {
+    setGelalSearching(true);
+    try {
+      const res = await fetch(`/api/customers?search=${encodeURIComponent(phone)}`);
+      if (res.ok) {
+        const customers = await res.json();
+        const match = customers.find((c: any) => c.phone && c.phone.replace(/\D/g, "").endsWith(phone.slice(-10)));
+        if (match) {
+          if (match.name && !gelalName) setGelalName(match.name);
+          setGelalCustomerFound(true);
+        }
+      }
+    } catch {}
+    setGelalSearching(false);
+  }
+
   function startGelalOrder() {
     setCart([]);
     setEditingItem(null);
@@ -192,31 +236,48 @@ export default function WaiterPage() {
   async function submitGelalOrder() {
     if (cart.length === 0) return;
     setSending(true);
-    await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "walk_in",
-        items: cart.map((c) => ({
-          menuItemId: c.menuItemId,
-          quantity: c.qty,
-          notes: c.notes || undefined,
-          selectedOptions: c.selectedOptions.length > 0 ? c.selectedOptions : undefined,
-          removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
-        })),
-      }),
-    });
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "walk_in",
+          customerName: gelalName || undefined,
+          customerPhone: gelalPhone || undefined,
+          items: cart.map((c) => ({
+            menuItemId: c.menuItemId,
+            quantity: c.qty,
+            notes: c.notes || undefined,
+            selectedOptions: c.selectedOptions.length > 0 ? c.selectedOptions : undefined,
+            removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Siparis gonderilemedi");
+        setSending(false);
+        return;
+      }
+      toast.success("Siparis gonderildi");
+      setCart([]);
+      setGelalName("");
+      setGelalPhone("");
+      setGelalCustomerFound(false);
+      setView("tables");
+      setTab("masa");
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
     setSending(false);
-    setCart([]);
-    setView("tables");
-    setTab("masa");
   }
 
   function openItemDetail(item: MenuItem) {
+    if (editingItem?.id === item.id) { setEditingItem(null); return; }
     setEditingItem(item);
     setItemNotes("");
     setItemOptions([]);
     setItemRemoved([]);
+    setItemQty(1);
   }
 
   function addToCart(item?: MenuItem) {
@@ -234,14 +295,14 @@ export default function WaiterPage() {
         `${c.menuItemId}-${c.notes}-${JSON.stringify(c.selectedOptions.sort())}-${JSON.stringify(c.removedIngredients.sort())}` === key
       );
       if (existing) {
-        return prev.map((c) => c === existing ? { ...c, qty: c.qty + 1 } : c);
+        return prev.map((c) => c === existing ? { ...c, qty: c.qty + itemQty } : c);
       }
       const basePrice = deliveryPricing ? (target.deliveryPrice || target.price) : target.price;
       return [...prev, {
         menuItemId: target.id,
         name: target.name,
         price: basePrice + optCost,
-        qty: 1,
+        qty: itemQty,
         notes: itemNotes,
         selectedOptions: [...itemOptions],
         removedIngredients: [...itemRemoved],
@@ -251,6 +312,7 @@ export default function WaiterPage() {
     setItemNotes("");
     setItemOptions([]);
     setItemRemoved([]);
+    setItemQty(1);
   }
 
   function quickAdd(item: MenuItem) {
@@ -277,85 +339,130 @@ export default function WaiterPage() {
   async function submitOrder() {
     if (!activeTable || cart.length === 0) return;
     setSending(true);
-    await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "manual",
-        tableNumber: activeTable,
-        items: cart.map((c) => ({
-          menuItemId: c.menuItemId,
-          quantity: c.qty,
-          notes: c.notes || undefined,
-          selectedOptions: c.selectedOptions.length > 0 ? c.selectedOptions : undefined,
-          removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
-        })),
-      }),
-    });
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "manual",
+          tableNumber: activeTable,
+          items: cart.map((c) => ({
+            menuItemId: c.menuItemId,
+            quantity: c.qty,
+            notes: c.notes || undefined,
+            selectedOptions: c.selectedOptions.length > 0 ? c.selectedOptions : undefined,
+            removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Siparis gonderilemedi");
+        setSending(false);
+        return;
+      }
+      toast.success("Siparis gonderildi");
+      setCart([]);
+      setView("table-detail");
+      loadTableDetail(activeTable);
+      loadTables();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
     setSending(false);
-    setCart([]);
-    setView("table-detail");
-    loadTableDetail(activeTable);
-    loadTables();
   }
 
   async function submitPackageOrder() {
     if (cart.length === 0) return;
     setSending(true);
-    await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "manual",
-        customerName: pkgName || undefined,
-        customerPhone: pkgPhone || undefined,
-        deliveryAddress: pkgAddress || undefined,
-        items: cart.map((c) => ({
-          menuItemId: c.menuItemId,
-          quantity: c.qty,
-          notes: c.notes || undefined,
-          selectedOptions: c.selectedOptions.length > 0 ? c.selectedOptions : undefined,
-          removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
-        })),
-      }),
-    });
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "manual",
+          customerName: pkgName || undefined,
+          customerPhone: pkgPhone || undefined,
+          deliveryAddress: pkgAddress || undefined,
+          items: cart.map((c) => ({
+            menuItemId: c.menuItemId,
+            quantity: c.qty,
+            notes: c.notes || undefined,
+            selectedOptions: c.selectedOptions.length > 0 ? c.selectedOptions : undefined,
+            removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Siparis gonderilemedi");
+        setSending(false);
+        return;
+      }
+      toast.success("Siparis gonderildi");
+      setCart([]);
+      setPkgName("");
+      setPkgPhone("");
+      setPkgAddress("");
+      setPkgCustomerFound(false);
+      setView("tables");
+      setTab("masa");
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
     setSending(false);
-    setCart([]);
-    setPkgName("");
-    setPkgPhone("");
-    setPkgAddress("");
-    setPkgCustomerFound(false);
-    setView("tables");
-    setTab("masa");
   }
 
   async function cancelOrder(orderId: number) {
     if (!confirm("Bu siparisi iptal etmek istediginize emin misiniz?")) return;
-    await fetch(`/api/orders/${orderId}/status`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "cancelled" }),
-    });
-    if (activeTable) loadTableDetail(activeTable);
-    loadTables();
+    try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+      if (!res.ok) {
+        toast.error("Siparis iptal edilemedi");
+        return;
+      }
+      toast.success("Siparis iptal edildi");
+      if (activeTable) loadTableDetail(activeTable);
+      loadTables();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function removeOrderItem(orderId: number, itemId: number) {
-    await fetch(`/api/orders/${orderId}/items`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ removeItemId: itemId }),
-    });
-    if (activeTable) loadTableDetail(activeTable);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ removeItemId: itemId }),
+      });
+      if (!res.ok) {
+        toast.error("Urun silinemedi");
+        return;
+      }
+      if (activeTable) loadTableDetail(activeTable);
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function updateItemQty(orderId: number, itemId: number, qty: number) {
-    await fetch(`/api/orders/${orderId}/items`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ updateItem: { itemId, quantity: qty } }),
-    });
-    if (activeTable) loadTableDetail(activeTable);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updateItem: { itemId, quantity: qty } }),
+      });
+      if (!res.ok) {
+        toast.error("Miktar guncellenemedi");
+        return;
+      }
+      if (activeTable) loadTableDetail(activeTable);
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   const cartTotal = cart.reduce((s, c) => s + c.price * c.qty, 0);
@@ -398,48 +505,6 @@ export default function WaiterPage() {
           ))}
         </div>
 
-        {/* Item detail overlay */}
-        {editingItem && (
-          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end">
-            <div className="bg-neutral-900 rounded-t-3xl w-full max-w-lg mx-auto p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold">{editingItem.name}</h3>
-                <span className="text-amber-400 font-bold">{getItemPrice(editingItem, useDeliveryPrice).toFixed(0)} TL</span>
-              </div>
-              {optionGroups.map((group) => (
-                <div key={group}>
-                  <p className="text-xs text-white/40 mb-1.5">{group}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {itemOptionsForItem.filter((o) => o.groupName === group).map((opt) => (
-                      <button
-                        key={opt.id}
-                        onClick={() => setItemOptions((prev) => prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id])}
-                        className={`px-3 py-1.5 rounded-lg text-xs transition-all ${itemOptions.includes(opt.id) ? "bg-amber-500/20 text-amber-400 border border-amber-500/40" : "bg-surface-2 text-white/50 border border-transparent"}`}
-                      >
-                        {opt.optionName} {opt.priceModifier > 0 && `+${opt.priceModifier.toFixed(0)}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              <div>
-                <p className="text-xs text-white/40 mb-1.5">Not</p>
-                <input
-                  type="text"
-                  value={itemNotes}
-                  onChange={(e) => setItemNotes(e.target.value)}
-                  placeholder="Ozel istek..."
-                  className="w-full bg-surface-2 border border-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => setEditingItem(null)} className="py-2 rounded-lg bg-surface-2 text-white/30 font-medium text-xs">Iptal</button>
-                <button onClick={() => addToCart()} className="py-2 rounded-lg bg-accent text-black font-bold text-xs">Ekle</button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* All categories & items - scrollable */}
         <div className="flex-1 overflow-y-auto p-4 space-y-5" ref={scrollContainerRef}>
           {menuCats.map((cat) => {
@@ -452,28 +517,72 @@ export default function WaiterPage() {
                   {catItems.map((item) => {
                     const hasOptions = menuOptions.some((o) => o.menuItemId === item.id);
                     const inCart = cart.find((c) => c.menuItemId === item.id);
+                    const isExpanded = editingItem?.id === item.id;
+                    const optCostCalc = isExpanded ? itemOptions.reduce((s, id) => { const o = menuOptions.find((x) => x.id === id); return s + (o?.priceModifier || 0); }, 0) : 0;
+                    const unitPrice = isExpanded ? (useDeliveryPrice ? (item.deliveryPrice || item.price) : item.price) + optCostCalc : 0;
+                    const totalPrice = unitPrice * itemQty;
+
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => hasOptions ? openItemDetail(item) : quickAdd(item)}
-                        className={`text-left rounded-xl transition-all active:scale-[0.97] border overflow-hidden ${inCart ? "bg-amber-500/10 border-amber-500/30" : "bg-surface-1 border-border"}`}
-                      >
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={item.name} className="w-full h-20 object-cover" />
-                        ) : (
-                          <div className="w-full h-12 bg-surface-2 flex items-center justify-center">
-                            <svg className="w-5 h-5 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      <div key={item.id} className="relative">
+                        <button
+                          onClick={() => hasOptions ? openItemDetail(item) : quickAdd(item)}
+                          className={`w-full text-left rounded-xl transition-all active:scale-[0.97] border overflow-hidden ${inCart ? "bg-amber-500/10 border-amber-500/30" : "bg-surface-1 border-border"}`}
+                        >
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt={item.name} className="w-full h-20 object-cover" />
+                          ) : (
+                            <div className="w-full h-12 bg-surface-2 flex items-center justify-center">
+                              <svg className="w-5 h-5 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            </div>
+                          )}
+                          <div className="p-2">
+                            <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-amber-400 text-sm font-bold">{getItemPrice(item, useDeliveryPrice).toFixed(0)} TL</span>
+                              {inCart && <span className="text-amber-400 text-xs font-bold bg-amber-500/20 px-1.5 py-0.5 rounded">{inCart.qty}</span>}
+                            </div>
+                            {hasOptions && <span className="text-white/20 text-[10px]">secenekli</span>}
+                          </div>
+                        </button>
+                        {isExpanded && (
+                          <div className="absolute inset-x-0 top-0 z-40 bg-neutral-900 border-2 border-amber-500/60 rounded-xl overflow-hidden shadow-2xl shadow-black/40">
+                            <div className="px-3 py-2 border-b border-neutral-800/60">
+                              <div className="flex items-center justify-between">
+                                <h3 className="font-bold text-white text-base leading-tight">{item.name}</h3>
+                                <button onClick={() => setEditingItem(null)} className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 shrink-0">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </div>
+                              <span className="text-amber-400 font-extrabold text-lg">{getItemPrice(item, useDeliveryPrice).toFixed(0)} TL</span>
+                            </div>
+                            <div className="px-3 py-2 space-y-2 max-h-[50vh] overflow-y-auto">
+                              {optionGroups.map((group) => (
+                                <div key={group}>
+                                  <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">{group}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {itemOptionsForItem.filter((o) => o.groupName === group).map((opt) => (
+                                      <button key={opt.id} onClick={() => setItemOptions((prev) => prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id])} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${itemOptions.includes(opt.id) ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                                        {opt.optionName} {opt.priceModifier > 0 && <span className="text-white/30">+{opt.priceModifier.toFixed(0)}</span>}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                              <textarea value={itemNotes} onChange={(e) => setItemNotes(e.target.value)} placeholder="Not..." rows={2} className="w-full bg-neutral-800/60 text-white rounded-lg px-2.5 py-1.5 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20 resize-none overflow-y-auto" />
+                              <div className="flex items-center gap-2 pt-1">
+                                <div className="flex items-center bg-neutral-800 rounded-full shrink-0">
+                                  <button onClick={() => setItemQty(Math.max(1, itemQty - 1))} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 text-sm font-bold">−</button>
+                                  <span className="text-white font-bold text-sm min-w-[20px] text-center">{itemQty}</span>
+                                  <button onClick={() => setItemQty(itemQty + 1)} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black text-sm font-bold">+</button>
+                                </div>
+                                <button onClick={() => addToCart()} className="flex-1 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs active:scale-[0.97]">
+                                  Ekle {itemQty}x {totalPrice.toFixed(0)} TL
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
-                        <div className="p-2">
-                          <p className="text-sm font-medium text-white truncate">{item.name}</p>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-amber-400 text-sm font-bold">{getItemPrice(item, useDeliveryPrice).toFixed(0)} TL</span>
-                            {inCart && <span className="text-amber-400 text-xs font-bold bg-amber-500/20 px-1.5 py-0.5 rounded">{inCart.qty}</span>}
-                          </div>
-                          {hasOptions && <span className="text-white/20 text-[10px]">secenekli</span>}
-                        </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -481,6 +590,7 @@ export default function WaiterPage() {
             );
           })}
         </div>
+        {editingItem && <div className="fixed inset-0 z-30" onClick={() => setEditingItem(null)} />}
 
         {/* Cart summary + submit */}
         {cart.length > 0 && (
@@ -515,6 +625,7 @@ export default function WaiterPage() {
             </div>
           </div>
         )}
+        <ToastContainer toasts={toast.toasts} />
       </div>
     );
   }
@@ -574,9 +685,34 @@ export default function WaiterPage() {
 
         {tab === "gelal" && (
           <div className="space-y-4">
-            <div className="bg-surface-1 rounded-2xl border border-border p-4 text-center">
-              <p className="text-white/40 text-sm">Musteri gelip alacak</p>
-              <p className="text-white/20 text-xs mt-1">Menuyu acip urunleri secin</p>
+            <div className="bg-surface-1 rounded-2xl border border-border p-4 space-y-3">
+              <p className="text-white/40 text-xs font-medium">Musteri Bilgileri (istege bagli)</p>
+              <div className="relative">
+                <input
+                  type="tel"
+                  value={gelalPhone}
+                  onChange={(e) => handleGelalPhoneChange(e.target.value)}
+                  className="w-full bg-surface-2 rounded-xl px-4 py-3 text-white border border-border focus:outline-none focus:border-accent/50"
+                  placeholder="Telefon (istege bagli)"
+                />
+                {gelalSearching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-accent/40 border-t-accent rounded-full animate-spin" />
+                  </div>
+                )}
+                {gelalCustomerFound && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                )}
+              </div>
+              <input
+                type="text"
+                value={gelalName}
+                onChange={(e) => setGelalName(e.target.value)}
+                className="w-full bg-surface-2 rounded-xl px-4 py-3 text-white border border-border focus:outline-none focus:border-accent/50"
+                placeholder="Ad Soyad (istege bagli)"
+              />
             </div>
             <button
               onClick={startGelalOrder}
@@ -643,6 +779,7 @@ export default function WaiterPage() {
             </button>
           </div>
         )}
+        <ToastContainer toasts={toast.toasts} />
       </div>
     );
   }
@@ -720,6 +857,7 @@ export default function WaiterPage() {
             + Siparis Ekle
           </button>
         </div>
+        <ToastContainer toasts={toast.toasts} />
       </div>
     );
   }
@@ -758,5 +896,5 @@ export default function WaiterPage() {
     );
   }
 
-  return null;
+  return <ToastContainer toasts={toast.toasts} />;
 }

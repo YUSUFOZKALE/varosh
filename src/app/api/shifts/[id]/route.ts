@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const id = parseInt(params.id);
   const body = await req.json();
   const db = getDb();

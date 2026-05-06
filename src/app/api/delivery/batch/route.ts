@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
 import QRCode from "qrcode";
 import { getShopLocation } from "@/lib/settings";
+import { getSession } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
@@ -58,6 +59,8 @@ function sortByRoute(orders: { id: number; deliveryLatitude: number | null; deli
 }
 
 export async function POST(req: NextRequest) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const { orderIds, courierId, baseUrl } = await req.json();
   const db = getDb();
   const [SHOP_LAT, SHOP_LNG] = getShopLocation();

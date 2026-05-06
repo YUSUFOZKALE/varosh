@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, and, sql, desc } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
 
-  let session = db
+  let tableSession = db
     .select()
     .from(schema.tableSessions)
     .where(
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
     )
     .get();
 
-  if (!session) {
+  if (!tableSession) {
     return NextResponse.json({ session: null, orders: [] });
   }
 
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     .where(
       and(
         eq(schema.orders.tableNumber, tableNumber),
-        sql`${schema.orders.createdAt} >= ${session.openedAt}`
+        sql`${schema.orders.createdAt} >= ${tableSession.openedAt}`
       )
     )
     .orderBy(desc(schema.orders.createdAt))
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
   const total = orders.reduce((s, o) => s + o.total, 0);
 
   return NextResponse.json({
-    session: { ...session, total },
+    session: { ...tableSession, total },
     orders: orders.map((o) => ({
       ...o,
       items: allItems.filter((i) => i.orderId === o.id),
@@ -59,6 +60,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const authSession = getSession();
+  if (!authSession) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
+
   const { tableNumber, action } = await req.json();
   if (!tableNumber) return NextResponse.json({ error: "tableNumber gerekli" }, { status: 400 });
 
@@ -68,7 +72,7 @@ export async function POST(req: NextRequest) {
     db.update(schema.tableSessions)
       .set({
         status: "closed" as const,
-        closedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
+        closedAt: sql`(datetime('now','localtime'))`,
       })
       .where(
         and(
@@ -80,7 +84,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  let session = db
+  let tableSession = db
     .select()
     .from(schema.tableSessions)
     .where(
@@ -91,13 +95,13 @@ export async function POST(req: NextRequest) {
     )
     .get();
 
-  if (!session) {
-    session = db
+  if (!tableSession) {
+    tableSession = db
       .insert(schema.tableSessions)
       .values({ tableNumber, status: "open", total: 0 })
       .returning()
       .get();
   }
 
-  return NextResponse.json({ session });
+  return NextResponse.json({ session: tableSession });
 }

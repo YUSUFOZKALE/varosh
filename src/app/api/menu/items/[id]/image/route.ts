@@ -4,8 +4,11 @@ import { eq } from "drizzle-orm";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
+import { getSession } from "@/lib/auth";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const id = parseInt(params.id);
   const db = getDb();
 
@@ -57,6 +60,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = getSession();
+  if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
   const id = parseInt(params.id);
   const db = getDb();
 
