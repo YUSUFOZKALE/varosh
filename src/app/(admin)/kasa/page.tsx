@@ -299,31 +299,29 @@ export default function KasaPage() {
               {summary.courierCashCollected > 0 && <span className="bg-green-500/10 text-green-400/70 px-2 py-0.5 rounded-lg">Kurye teslim: +{summary.courierCashCollected.toFixed(0)}</span>}
             </div>
           </div>
-          {summary.courierCashOnHand > 0 && (
-            <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-2xl p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-cyan-500/20 flex items-center justify-center shrink-0">
-                    <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-cyan-400/60 text-xs font-medium">Kurye Nakit</p>
-                    <p className="text-[10px] text-white/30">Teslim edilmemis nakit</p>
-                  </div>
+          <div className={`border rounded-2xl p-4 ${summary.courierCashOnHand > 0 ? "bg-cyan-500/10 border-cyan-500/20" : "bg-surface-1 border-border"}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${summary.courierCashOnHand > 0 ? "bg-cyan-500/20" : "bg-white/5"}`}>
+                  <svg className={`w-4 h-4 ${summary.courierCashOnHand > 0 ? "text-cyan-400" : "text-white/30"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
                 </div>
-                <p className="text-lg sm:text-2xl font-bold text-cyan-400 shrink-0">{summary.courierCashOnHand.toFixed(0)} <span className="text-xs sm:text-sm font-normal">TL</span></p>
+                <div className="min-w-0">
+                  <p className={`text-xs font-medium ${summary.courierCashOnHand > 0 ? "text-cyan-400" : "text-white/40"}`}>Kurye&apos;de Kalan Nakit</p>
+                  <p className="text-[10px] text-white/30">{summary.courierCashOnHand > 0 ? "Teslim edilmemis nakit" : "Kuryede nakit yok"}</p>
+                </div>
               </div>
-              {summary.couriers && summary.couriers.filter(c => c.cashOnHand > 0).length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
-                  {summary.couriers.filter(c => c.cashOnHand > 0).map(c => (
-                    <span key={c.courierId} className="bg-cyan-500/10 text-cyan-400/80 px-2 py-0.5 rounded-lg">
-                      {c.name}: {c.cashOnHand.toFixed(0)} TL
-                    </span>
-                  ))}
-                </div>
-              )}
+              <p className={`text-lg sm:text-2xl font-bold shrink-0 ${summary.courierCashOnHand > 0 ? "text-cyan-400" : "text-white/20"}`}>{summary.courierCashOnHand.toFixed(0)} <span className="text-xs sm:text-sm font-normal">TL</span></p>
             </div>
-          )}
+            {summary.couriers && summary.couriers.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
+                {summary.couriers.map(c => (
+                  <span key={c.courierId} className={`px-2 py-0.5 rounded-lg ${c.cashOnHand > 0 ? "bg-cyan-500/10 text-cyan-400/80" : "bg-white/5 text-white/30"}`}>
+                    {c.name}: {c.cashOnHand.toFixed(0)} TL
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

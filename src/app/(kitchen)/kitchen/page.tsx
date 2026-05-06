@@ -16,6 +16,9 @@ interface KitchenOrder {
   total: number;
   batchId: number | null;
   createdAt: string;
+  paymentMethod: string | null;
+  paymentConfirmedAt: string | null;
+  deliveredAt: string | null;
   items: OrderItem[];
 }
 
@@ -204,6 +207,8 @@ export default function KitchenPage() {
   const newOrders = orders.filter((o) => o.status === "new");
   const preparingOrders = orders.filter((o) => o.status === "preparing");
   const readyOrders = orders.filter((o) => o.status === "ready");
+  const onTheWayOrders = orders.filter((o) => o.status === "on_the_way");
+  const deliveredOrders = orders.filter((o) => o.status === "delivered");
 
   const newTableOrders = newOrders.filter((o) => !o.deliveryAddress);
   const clusterOrderIds = new Set(clusters.flatMap((c) => c.orderIds || c.orders.map((o) => o.id)));
@@ -228,13 +233,25 @@ export default function KitchenPage() {
               <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
               <span className="text-green-400">{readyOrders.length} Hazir</span>
             </span>
+            {onTheWayOrders.length > 0 && (
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                <span className="text-purple-400">{onTheWayOrders.length} Yolda</span>
+              </span>
+            )}
+            {deliveredOrders.length > 0 && (
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <span className="text-emerald-400">{deliveredOrders.length} Teslim</span>
+              </span>
+            )}
           </div>
         </div>
         <span className="text-white/20 text-xs hidden sm:inline">Otomatik yenileme (5s)</span>
       </div>
 
-      {/* 3-Column Layout: New | Preparing | Ready */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      {/* Multi-Column Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-5 gap-3">
         {/* NEW ORDERS */}
         <div>
           <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-3 py-2 mb-3">
@@ -561,6 +578,100 @@ export default function KitchenPage() {
             })}
             {readyOrders.length === 0 && (
               <div className="text-center py-8 text-white/20 text-sm">Hazir siparis yok</div>
+            )}
+          </div>
+        </div>
+
+        {/* ON THE WAY */}
+        <div>
+          <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl px-3 py-2 mb-3">
+            <h2 className="text-purple-400 font-bold text-sm">YOLDA</h2>
+          </div>
+          <div className="space-y-3">
+            {onTheWayOrders.map((order) => {
+              const elapsed = getElapsed(order.createdAt);
+              const bl = getBatchLabel(order);
+              return (
+                <div
+                  key={order.id}
+                  className="bg-surface-1 rounded-xl border-l-4 border-purple-500 overflow-hidden"
+                >
+                  <div className="flex items-center justify-between px-3 py-2 bg-purple-500/5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-lg">#{order.id}</span>
+                      {bl && <span className="text-[10px] bg-white/10 text-white/60 font-bold px-1.5 py-0.5 rounded">Kume {bl}</span>}
+                      <span className="text-xs text-purple-400">Paket</span>
+                    </div>
+                    <span className="text-sm font-mono text-white/40">{elapsed}dk</span>
+                  </div>
+                  {order.customerName && (
+                    <p className="px-3 pt-1 text-xs text-white/40">{order.customerName} {order.customerPhone && `— ${order.customerPhone}`}</p>
+                  )}
+                  <div className="p-3 space-y-1.5">
+                    {order.items.map((item) => renderItemDetail(item, "purple"))}
+                  </div>
+                  {order.deliveryAddress && (
+                    <p className="px-3 pb-2 text-[10px] text-white/20 truncate">{order.deliveryAddress}</p>
+                  )}
+                  <div className="px-3 pb-3 text-center">
+                    <span className="text-purple-400/60 text-sm font-medium">Kurye yolda — {order.total.toFixed(0)} TL</span>
+                  </div>
+                </div>
+              );
+            })}
+            {onTheWayOrders.length === 0 && (
+              <div className="text-center py-8 text-white/20 text-sm">Yolda siparis yok</div>
+            )}
+          </div>
+        </div>
+
+        {/* DELIVERED */}
+        <div>
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2 mb-3">
+            <h2 className="text-emerald-400 font-bold text-sm">TESLIM EDILDI</h2>
+          </div>
+          <div className="space-y-3">
+            {deliveredOrders.map((order) => {
+              const elapsed = getElapsed(order.createdAt);
+              const isPaid = !!order.paymentConfirmedAt;
+              return (
+                <div
+                  key={order.id}
+                  className={`bg-surface-1 rounded-xl border-l-4 overflow-hidden ${isPaid ? "border-emerald-500" : "border-yellow-500"}`}
+                >
+                  <div className={`flex items-center justify-between px-3 py-2 ${isPaid ? "bg-emerald-500/5" : "bg-yellow-500/5"}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-lg">#{order.id}</span>
+                      {order.tableNumber && <span className="text-xs text-amber-400 font-bold">Masa {order.tableNumber}</span>}
+                      {order.deliveryAddress && <span className="text-xs text-purple-400">Paket</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isPaid ? (
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded-lg">
+                          {order.paymentMethod === "cash" ? "NAKIT" : "KART"} ODENDI
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-yellow-500/20 text-yellow-400 font-bold px-2 py-0.5 rounded-lg animate-pulse">
+                          ODEME BEKLIYOR
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {order.customerName && (
+                    <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>
+                  )}
+                  <div className="p-3 space-y-1.5">
+                    {order.items.map((item) => renderItemDetail(item, "green"))}
+                  </div>
+                  <div className="px-3 pb-3 flex items-center justify-between">
+                    <span className="text-white/30 text-xs">{elapsed}dk once</span>
+                    <span className={`font-bold text-sm ${isPaid ? "text-emerald-400" : "text-yellow-400"}`}>{order.total.toFixed(0)} TL</span>
+                  </div>
+                </div>
+              );
+            })}
+            {deliveredOrders.length === 0 && (
+              <div className="text-center py-8 text-white/20 text-sm">Teslim edilen siparis yok</div>
             )}
           </div>
         </div>

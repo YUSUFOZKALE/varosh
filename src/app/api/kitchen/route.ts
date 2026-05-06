@@ -9,7 +9,8 @@ export async function GET() {
 
   const orders = db.select()
     .from(schema.orders)
-    .where(sql`${schema.orders.status} IN ('new', 'preparing', 'ready')`)
+    .where(sql`${schema.orders.status} IN ('new', 'preparing', 'ready', 'on_the_way')
+      OR (${schema.orders.status} = 'delivered' AND ${schema.orders.deliveredAt} >= datetime('now', 'localtime', '-2 hours'))`)
     .orderBy(asc(schema.orders.createdAt))
     .all();
 

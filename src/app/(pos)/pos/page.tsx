@@ -35,11 +35,12 @@ export default function PosPage() {
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<CompletedOrder | null>(null);
-  const [mobileTab, setMobileTab] = useState<"menu" | "cart">("menu");
+  const [mobileTab, setMobileTab] = useState<"menu" | "cart" | "orders">("menu");
 
-  interface OpenOrder { id: number; customerName: string | null; customerPhone: string | null; tableNumber: number | null; total: number; status: string; source: string; paymentConfirmedAt: string | null; createdAt: string; deliveryAddress: string | null; }
+  interface OpenOrder { id: number; customerName: string | null; customerPhone: string | null; tableNumber: number | null; total: number; status: string; source: string; paymentMethod: string | null; paymentConfirmedAt: string | null; createdAt: string; deliveryAddress: string | null; }
   interface BillDetail { id: number; customerName: string | null; tableNumber: number | null; total: number; subtotal: number; deliveryFee: number; source: string; items: { name: string; quantity: number; unitPrice: number; totalPrice: number; extras: { id: number; name: string; price: number }[]; removed: string[]; notes: string | null }[]; }
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [allOrders, setAllOrders] = useState<OpenOrder[]>([]);
   const [showBills, setShowBills] = useState(false);
   const [billDetail, setBillDetail] = useState<BillDetail | null>(null);
   const [payingBill, setPayingBill] = useState(false);
@@ -81,8 +82,9 @@ export default function PosPage() {
       } catch {}
       try { setOptions(await optRes.json()); } catch {}
       try {
-        const allOrders: OpenOrder[] = await ordRes.json();
-        setOpenOrders(allOrders.filter((o) => !o.paymentConfirmedAt && o.status !== "cancelled"));
+        const ordersData: OpenOrder[] = await ordRes.json();
+        setAllOrders(ordersData.filter((o) => o.status !== "cancelled"));
+        setOpenOrders(ordersData.filter((o) => !o.paymentConfirmedAt && o.status !== "cancelled"));
       } catch {}
       if (cats.length > 0 && !selectedCat) setSelectedCat(cats[0].id);
     } catch {}
@@ -109,7 +111,11 @@ export default function PosPage() {
       ).slice(0, 5)
     : [];
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 10000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   function scrollToCategory(catId: number) {
     setSelectedCat(catId);
@@ -336,10 +342,13 @@ export default function PosPage() {
         <button onClick={() => setMobileTab("cart")} className={`flex-1 py-3 text-sm font-bold text-center transition-all relative ${mobileTab === "cart" ? "text-amber-400 border-b-2 border-amber-400" : "text-white/40"}`}>
           🛒 Sepet {cartCount > 0 && <span className="ml-1 bg-amber-500 text-black text-[10px] px-1.5 py-0.5 rounded-full">{cartCount}</span>}
         </button>
+        <button onClick={() => setMobileTab("orders")} className={`flex-1 py-3 text-sm font-bold text-center transition-all relative ${mobileTab === "orders" ? "text-amber-400 border-b-2 border-amber-400" : "text-white/40"}`}>
+          📋 Genel {allOrders.filter(o => o.status !== "delivered" && o.status !== "cancelled").length > 0 && <span className="ml-1 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{allOrders.filter(o => o.status !== "delivered" && o.status !== "cancelled").length}</span>}
+        </button>
       </div>
 
       {/* Left: Menu */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${mobileTab !== "menu" ? "hidden md:flex" : ""}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden ${mobileTab === "menu" ? "" : mobileTab === "orders" ? "hidden" : "hidden md:flex"}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2">
           <div className="flex items-center gap-3">
@@ -352,6 +361,15 @@ export default function PosPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMobileTab(mobileTab === "orders" ? "menu" : "orders")}
+              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${mobileTab === "orders" ? "bg-blue-500 text-white" : "bg-blue-500/20 text-blue-400"}`}
+            >
+              📋 Genel
+              {allOrders.filter(o => o.status !== "delivered" && o.status !== "cancelled").length > 0 && (
+                <span className="bg-blue-400/30 text-white text-[10px] px-1.5 py-0.5 rounded-full">{allOrders.filter(o => o.status !== "delivered" && o.status !== "cancelled").length}</span>
+              )}
+            </button>
             {cartCount > 0 && (
               <button onClick={() => setMobileTab("cart")} className="md:pointer-events-none bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-full text-xs font-bold">
                 {cartCount} ürün
@@ -515,7 +533,7 @@ export default function PosPage() {
       </div>
 
       {/* Right: Cart Panel */}
-      <div className={`w-full md:w-[340px] bg-neutral-900 md:border-l border-neutral-800/60 flex flex-col ${mobileTab !== "cart" ? "hidden md:flex" : ""}`}>
+      <div className={`w-full md:w-[340px] bg-neutral-900 md:border-l border-neutral-800/60 flex flex-col ${mobileTab === "cart" ? "" : mobileTab === "orders" ? "hidden" : "hidden md:flex"}`}>
         {/* Open Bills Button */}
         {openOrders.length > 0 && (
           <button
@@ -716,6 +734,79 @@ export default function PosPage() {
         </div>
       </div>
 
+
+      {/* Orders Panel (Genel Sistem) */}
+      <div className={`w-full md:w-[400px] bg-neutral-900 md:border-l border-neutral-800/60 flex flex-col ${mobileTab !== "orders" ? "hidden" : ""}`}>
+        <div className="p-3 border-b border-neutral-800/60 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-white">Genel Sistem</h2>
+            <p className="text-white/30 text-[10px]">Tum siparisler • 10s yenileme</p>
+          </div>
+          <button onClick={() => load()} className="px-3 py-1.5 rounded-lg bg-neutral-800 text-white/40 text-xs font-medium active:scale-[0.97]">
+            Yenile
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {/* Status sections */}
+          {(() => {
+            const newO = allOrders.filter(o => o.status === "new");
+            const prepO = allOrders.filter(o => o.status === "preparing");
+            const readyO = allOrders.filter(o => o.status === "ready");
+            const wayO = allOrders.filter(o => o.status === "on_the_way");
+            const delivO = allOrders.filter(o => o.status === "delivered").slice(0, 10);
+            const sections: { key: string; title: string; orders: OpenOrder[]; color: string; bgColor: string; borderColor: string }[] = [
+              { key: "new", title: "Yeni", orders: newO, color: "text-blue-400", bgColor: "bg-blue-500/10", borderColor: "border-blue-500/30" },
+              { key: "preparing", title: "Hazirlaniyor", orders: prepO, color: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
+              { key: "ready", title: "Hazir", orders: readyO, color: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
+              { key: "on_the_way", title: "Yolda", orders: wayO, color: "text-purple-400", bgColor: "bg-purple-500/10", borderColor: "border-purple-500/30" },
+              { key: "delivered", title: "Teslim Edildi", orders: delivO, color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/30" },
+            ];
+            return sections.map(sec => (
+              <div key={sec.key}>
+                <div className={`${sec.bgColor} border ${sec.borderColor} rounded-xl px-3 py-2 mb-2 flex items-center justify-between`}>
+                  <span className={`${sec.color} font-bold text-xs`}>{sec.title.toUpperCase()}</span>
+                  <span className={`${sec.color} text-xs font-medium`}>{sec.orders.length}</span>
+                </div>
+                {sec.orders.length === 0 ? (
+                  <p className="text-white/10 text-xs text-center py-2">—</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {sec.orders.map(o => {
+                      const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
+                      const isPaid = !!o.paymentConfirmedAt;
+                      return (
+                        <div key={o.id} onClick={() => openBillDetail(o.id)} className="bg-neutral-800/40 rounded-xl p-2.5 cursor-pointer hover:bg-neutral-800/70 transition-all active:scale-[0.98]">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-white">#{o.id}</span>
+                              {o.tableNumber && <span className="text-[10px] bg-amber-500/20 text-amber-400 font-bold px-1.5 py-0.5 rounded">M{o.tableNumber}</span>}
+                              {o.deliveryAddress && <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">Paket</span>}
+                              {!o.deliveryAddress && !o.tableNumber && <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">Gel Al</span>}
+                              {isPaid && (
+                                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-1.5 py-0.5 rounded">
+                                  {o.paymentMethod === "cash" ? "NAKIT" : "KART"}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-amber-400 font-bold text-sm">{o.total.toFixed(0)} TL</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-white/30 text-xs truncate">{o.customerName || "Isimsiz"}</span>
+                            <span className={`text-xs ${mins > 15 ? "text-red-400 font-bold" : "text-white/20"}`}>{mins}dk</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ));
+          })()}
+          {allOrders.length === 0 && (
+            <div className="text-center py-10 text-white/15 text-sm">Aktif siparis yok</div>
+          )}
+        </div>
+      </div>
 
       {/* Order Success Toast */}
       {completedOrder && (

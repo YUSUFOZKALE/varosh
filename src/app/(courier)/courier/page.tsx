@@ -85,12 +85,17 @@ export default function CourierPage() {
   const mapInstanceRef = useRef<any>(null);
   const mapMarkerRef = useRef<any>(null);
 
+  interface UncollectedOrder { id: number; customerName: string | null; total: number; paidAmount: number; deliveredAt: string | null; }
+  interface CashMovement { id: number; type: string; amount: number; description: string | null; createdAt: string; }
   const [cashOnHand, setCashOnHand] = useState<number>(0);
   const [cashFromDeliveries, setCashFromDeliveries] = useState<number>(0);
   const [cardFromDeliveries, setCardFromDeliveries] = useState<number>(0);
   const [todayDeposits, setTodayDeposits] = useState<number>(0);
   const [todayWithdrawals, setTodayWithdrawals] = useState<number>(0);
   const [todayDeliveryCount, setTodayDeliveryCount] = useState<number>(0);
+  const [uncollectedOrders, setUncollectedOrders] = useState<UncollectedOrder[]>([]);
+  const [todayMovements, setTodayMovements] = useState<CashMovement[]>([]);
+  const [showCashDetail, setShowCashDetail] = useState(false);
   const [cashModal, setCashModal] = useState<"deposit" | "withdrawal" | null>(null);
   const [cashAmount, setCashAmount] = useState("");
   const [cashProcessing, setCashProcessing] = useState(false);
@@ -150,6 +155,8 @@ export default function CourierPage() {
         setTodayDeposits(data.todayDeposits);
         setTodayWithdrawals(data.todayWithdrawals);
         setTodayDeliveryCount(data.todayDeliveryCount || 0);
+        setUncollectedOrders(data.uncollectedOrders || []);
+        setTodayMovements(data.todayMovements || []);
       }
     } catch {}
   }, []);
@@ -186,6 +193,7 @@ export default function CourierPage() {
       setCashAmount("");
       toast.success(cashModal === "deposit" ? "Kasa teslimi basarili" : "Kasadan alma basarili");
       load();
+      loadCash();
     } catch {
       toast.error("Baglanti hatasi");
     }
@@ -632,43 +640,119 @@ export default function CourierPage() {
 
       {/* Cash on Hand */}
       <div className="bg-surface-1 rounded-2xl border border-border p-3 sm:p-4">
+        {/* Main cash display */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center shrink-0">
-              <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${cashOnHand > 0 ? "bg-green-500/20" : "bg-white/5"}`}>
+              <svg className={`w-5 h-5 ${cashOnHand > 0 ? "text-green-400" : "text-white/30"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
             </div>
             <div>
-              <p className="text-white/40 text-xs">Uzerimdeki Nakit</p>
-              <p className="text-xl sm:text-2xl font-bold text-green-400">{cashOnHand.toFixed(0)} TL</p>
+              <p className="text-white/40 text-xs">Cebimdeki Nakit</p>
+              <p className={`text-2xl sm:text-3xl font-extrabold ${cashOnHand > 0 ? "text-green-400" : "text-white/20"}`}>{cashOnHand.toFixed(0)} TL</p>
             </div>
           </div>
+          <button
+            onClick={() => setShowCashDetail(!showCashDetail)}
+            className="px-2.5 py-1.5 rounded-lg bg-white/5 text-white/40 text-xs font-medium active:scale-[0.97]"
+          >
+            {showCashDetail ? "Gizle" : "Detay"}
+          </button>
         </div>
+
+        {/* Cash breakdown */}
+        <div className="bg-black/20 rounded-xl p-3 mb-3 space-y-1.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-white/40">Nakit tahsilat</span>
+            <span className="text-green-400 font-bold">+{cashFromDeliveries.toFixed(0)} TL</span>
+          </div>
+          {todayWithdrawals > 0 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-white/40">Kasadan alinan</span>
+              <span className="text-cyan-400 font-bold">+{todayWithdrawals.toFixed(0)} TL</span>
+            </div>
+          )}
+          {todayDeposits > 0 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-white/40">Kasaya teslim edilen</span>
+              <span className="text-amber-400 font-bold">-{todayDeposits.toFixed(0)} TL</span>
+            </div>
+          )}
+          <div className="border-t border-white/5 pt-1.5 flex justify-between text-xs font-bold">
+            <span className="text-white/60">Cebimdeki nakit</span>
+            <span className={cashOnHand > 0 ? "text-green-400" : "text-white/30"}>{cashOnHand.toFixed(0)} TL</span>
+          </div>
+        </div>
+
+        {/* Today stats */}
         <div className="flex flex-wrap gap-2 mb-3 text-[11px]">
           {todayDeliveryCount > 0 && (
             <span className="bg-white/5 text-white/40 px-2 py-0.5 rounded-lg">{todayDeliveryCount} teslimat</span>
           )}
-          {cashFromDeliveries > 0 && (
-            <span className="bg-green-500/10 text-green-400/80 px-2 py-0.5 rounded-lg">Nakit: {cashFromDeliveries.toFixed(0)} TL</span>
-          )}
           {cardFromDeliveries > 0 && (
-            <span className="bg-blue-500/10 text-blue-400/80 px-2 py-0.5 rounded-lg">POS: {cardFromDeliveries.toFixed(0)} TL</span>
+            <span className="bg-blue-500/10 text-blue-400/80 px-2 py-0.5 rounded-lg">POS tahsilat: {cardFromDeliveries.toFixed(0)} TL</span>
           )}
-          {todayWithdrawals > 0 && (
-            <span className="bg-cyan-500/10 text-cyan-400/80 px-2 py-0.5 rounded-lg">Alinan: {todayWithdrawals.toFixed(0)} TL</span>
-          )}
-          {todayDeposits > 0 && (
-            <span className="bg-amber-500/10 text-amber-400/80 px-2 py-0.5 rounded-lg">Birakilan: {todayDeposits.toFixed(0)} TL</span>
+          {(cashFromDeliveries + cardFromDeliveries) > 0 && (
+            <span className="bg-white/5 text-white/50 px-2 py-0.5 rounded-lg">Toplam ciro: {(cashFromDeliveries + cardFromDeliveries).toFixed(0)} TL</span>
           )}
         </div>
+
+        {/* Detail: uncollected orders + movements */}
+        {showCashDetail && (
+          <div className="space-y-3 mb-3">
+            {uncollectedOrders.length > 0 && (
+              <div>
+                <p className="text-[11px] text-white/30 font-bold uppercase mb-1.5">Nakit tahsil edilen siparisler</p>
+                <div className="space-y-1">
+                  {uncollectedOrders.map(o => (
+                    <div key={o.id} className="flex items-center justify-between bg-green-500/5 border border-green-500/10 rounded-lg px-2.5 py-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/60 text-xs font-bold">#{o.id}</span>
+                        <span className="text-white/40 text-xs">{o.customerName || "Isimsiz"}</span>
+                      </div>
+                      <span className="text-green-400 text-xs font-bold">{o.paidAmount.toFixed(0)} TL</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {todayMovements.length > 0 && (
+              <div>
+                <p className="text-[11px] text-white/30 font-bold uppercase mb-1.5">Kasa islemleri</p>
+                <div className="space-y-1">
+                  {todayMovements.map(m => (
+                    <div key={m.id} className="flex items-center justify-between bg-white/5 rounded-lg px-2.5 py-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${m.type === "deposit" ? "bg-amber-500/20 text-amber-400" : "bg-cyan-500/20 text-cyan-400"}`}>
+                          {m.type === "deposit" ? "TESLIM" : "ALIM"}
+                        </span>
+                        <span className="text-white/30 text-[10px]">
+                          {(() => { try { return new Date(m.createdAt.replace(" ", "T")).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } })()}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-bold ${m.type === "deposit" ? "text-amber-400" : "text-cyan-400"}`}>
+                        {m.type === "deposit" ? "-" : "+"}{m.amount.toFixed(0)} TL
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {uncollectedOrders.length === 0 && todayMovements.length === 0 && (
+              <p className="text-center text-white/15 text-xs py-2">Henuz islem yok</p>
+            )}
+          </div>
+        )}
+
+        {/* Action buttons */}
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => { setCashModal("deposit"); setCashAmount(cashOnHand > 0 ? cashOnHand.toFixed(0) : ""); setCashResult(null); }}
             className="py-3 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 font-bold text-xs sm:text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-1.5 sm:gap-2"
           >
             <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
-            <span className="whitespace-nowrap">Kasa Teslimi</span>
+            <span className="whitespace-nowrap">Kasaya Teslim</span>
           </button>
           <button
             onClick={() => { setCashModal("withdrawal"); setCashAmount(""); setCashResult(null); }}
