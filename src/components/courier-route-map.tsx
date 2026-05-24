@@ -84,7 +84,11 @@ export default function CourierRouteMap({ orders }: Props) {
       const phoneLink = order.customerPhone
         ? `<br/><a href="tel:${order.customerPhone}" style="color:#3b82f6;font-size:12px">${order.customerPhone}</a>`
         : "";
-      const navLink = `<br/><a href="https://www.google.com/maps/dir/?api=1&destination=${order.deliveryLatitude},${order.deliveryLongitude}&travelmode=driving" target="_blank" style="color:#f59e0b;font-size:11px;font-weight:bold">Navigasyon &#8599;</a>`;
+      const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const navHref = isIOS
+        ? `http://maps.apple.com/?daddr=${order.deliveryLatitude},${order.deliveryLongitude}&dirflg=d`
+        : `https://www.google.com/maps/dir/?api=1&destination=${order.deliveryLatitude},${order.deliveryLongitude}&travelmode=driving`;
+      const navLink = `<br/><a href="${navHref}" target="_blank" style="color:#f59e0b;font-size:11px;font-weight:bold">Navigasyon &#8599;</a>`;
       const statusText = isDone
         ? '<span style="color:#22c55e;font-size:10px">&#10003; Teslim Edildi</span>'
         : isNext

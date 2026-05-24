@@ -8,7 +8,6 @@ import { usePublicSettings } from "@/hooks/use-public-settings";
 interface NavItem { href: string; label: string; icon: string; roles?: string[] }
 
 const NAV: NavItem[] = [
-  { href: "/", label: "Panel", icon: "\u{1F4CA}", roles: ["owner", "cashier"] },
   { href: "/orders", label: "Siparisler", icon: "\u{1F4E6}", roles: ["owner", "cashier"] },
   { href: "/pos", label: "Yeni Siparis", icon: "+", roles: ["owner", "cashier"] },
   { href: "/kitchen", label: "Mutfak", icon: "\u{1F468}\u{200D}\u{1F373}", roles: ["owner", "cook"] },
@@ -20,7 +19,9 @@ const NAV: NavItem[] = [
   { href: "/delivery", label: "Teslimat", icon: "\u{1F6F5}", roles: ["owner", "courier"] },
   { href: "/staff", label: "Personel", icon: "\u{1F464}", roles: ["owner"] },
   { href: "/checklist", label: "Kontrol", icon: "✅", roles: ["owner", "cashier"] },
+  { href: "/media", label: "Medya", icon: "\u{1F5BC}️", roles: ["owner"] },
   { href: "/reports", label: "Raporlar", icon: "\u{1F4C8}", roles: ["owner"] },
+  { href: "/", label: "Panel", icon: "\u{1F4CA}", roles: ["owner", "cashier"] },
   { href: "/settings", label: "Ayarlar", icon: "⚙️", roles: ["owner"] },
 ];
 

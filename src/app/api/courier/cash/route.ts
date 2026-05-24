@@ -160,5 +160,22 @@ export async function POST(req: NextRequest) {
 
   const cashOnHand = cashFromDeliveries + todayWithdrawals - todayDeposits;
 
-  return NextResponse.json({ cashOnHand, cashFromDeliveries, todayDeposits, todayWithdrawals });
+  const today2 = new Date().toISOString().split("T")[0];
+  const cardDeliveries2 = db.all(sql`
+    SELECT COALESCE(SUM(p.amount), 0) AS total
+    FROM orders o
+    JOIN payments p ON p.order_id = o.id
+    WHERE o.status = 'delivered'
+      AND o.staff_courier_id = ${courierId}
+      AND p.method = 'card'
+      AND date(o.delivered_at) = ${today2}
+  `) as { total: number }[];
+
+  return NextResponse.json({
+    cashOnHand,
+    cashFromDeliveries,
+    cardFromDeliveries: cardDeliveries2[0]?.total || 0,
+    todayDeposits,
+    todayWithdrawals,
+  });
 }

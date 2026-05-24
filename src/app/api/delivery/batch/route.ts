@@ -35,8 +35,14 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
 
 function sortByRoute(orders: { id: number; deliveryLatitude: number | null; deliveryLongitude: number | null }[], shopLat: number, shopLng: number) {
   if (orders.length <= 1) return orders.map((o) => o.id);
-  const sorted: typeof orders = [];
-  const remaining = [...orders];
+
+  const withCoords = orders.filter((o) => o.deliveryLatitude && o.deliveryLongitude);
+  const withoutCoords = orders.filter((o) => !o.deliveryLatitude || !o.deliveryLongitude);
+
+  if (withCoords.length === 0) return orders.map((o) => o.id);
+
+  const sorted: typeof withCoords = [];
+  const remaining = [...withCoords];
   let curLat = shopLat;
   let curLng = shopLng;
   while (remaining.length > 0) {
@@ -44,18 +50,15 @@ function sortByRoute(orders: { id: number; deliveryLatitude: number | null; deli
     let nearestDist = Infinity;
     for (let i = 0; i < remaining.length; i++) {
       const o = remaining[i];
-      if (!o.deliveryLatitude || !o.deliveryLongitude) continue;
-      const d = haversine(curLat, curLng, o.deliveryLatitude, o.deliveryLongitude);
+      const d = haversine(curLat, curLng, o.deliveryLatitude!, o.deliveryLongitude!);
       if (d < nearestDist) { nearestDist = d; nearest = i; }
     }
     const pick = remaining.splice(nearest, 1)[0];
     sorted.push(pick);
-    if (pick.deliveryLatitude && pick.deliveryLongitude) {
-      curLat = pick.deliveryLatitude;
-      curLng = pick.deliveryLongitude;
-    }
+    curLat = pick.deliveryLatitude!;
+    curLng = pick.deliveryLongitude!;
   }
-  return sorted.map((o) => o.id);
+  return [...sorted, ...withoutCoords].map((o) => o.id);
 }
 
 export async function POST(req: NextRequest) {

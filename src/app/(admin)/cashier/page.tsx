@@ -58,6 +58,13 @@ interface TableSessionData {
   orders: SessionOrder[];
 }
 
+interface TableInfo {
+  id: number;
+  number: number;
+  label: string | null;
+  isActive: boolean;
+}
+
 interface CashRegisterEntry {
   id: number;
   type: string;
@@ -94,8 +101,13 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const EXPENSE_CATEGORIES = [
-  "Malzeme / Hammadde", "Personel", "Kira", "Elektrik / Su / Dogalgaz",
-  "Ambalaj / Paket", "Temizlik", "Bakim / Onarim", "Ulasim / Akaryakit", "Vergi / Sigorta", "Diger",
+  "Gida Hammaddesi", "Icecek Hammaddesi", "Ambalaj / Paket",
+  "Personel Maas", "Personel SGK", "Kira",
+  "Elektrik", "Su", "Dogalgaz", "Internet / Telefon",
+  "Temizlik", "Bakim / Onarim", "Ulasim / Akaryakit",
+  "Pazarlama / Reklam", "Komisyon / Platform",
+  "Vergi", "SGK / Sigorta", "Muhasebeci / Danismanlik",
+  "Ekipman / Demirbas", "Kirtasiye / Ofis", "Diger",
 ];
 
 const TYPE_LABELS: Record<string, string> = {
@@ -130,6 +142,9 @@ export default function CashierPage() {
   const [selectedCourierOrders, setSelectedCourierOrders] = useState<Set<number>>(new Set());
   const [courierAdvanceModal, setCourierAdvanceModal] = useState(false);
 
+  // All tables for grid view
+  const [allTables, setAllTables] = useState<TableInfo[]>([]);
+
   // Add item to table
   const [addItemTable, setAddItemTable] = useState<number | null>(null);
   const [menuCats, setMenuCats] = useState<MenuCat[]>([]);
@@ -144,6 +159,13 @@ export default function CashierPage() {
   const [expenses, setExpenses] = useState<{ entries: FinanceEntry[]; totals: { income: number; expense: number; net: number } }>({ entries: [], totals: { income: 0, expense: 0, net: 0 } });
   const [expenseModal, setExpenseModal] = useState(false);
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split("T")[0]);
+
+  const loadTables = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tables");
+      if (res.ok) setAllTables(await res.json());
+    } catch {}
+  }, []);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -190,6 +212,7 @@ export default function CashierPage() {
   }, [expenseDate]);
 
   function loadAll() {
+    loadTables();
     loadSessions();
     loadPackages();
     loadCourierPending();
@@ -200,7 +223,7 @@ export default function CashierPage() {
   useEffect(() => {
     loadAll();
     loadExpenses();
-    const iv = setInterval(() => { loadSessions(); loadPackages(); loadCourierPending(); }, 10000);
+    const iv = setInterval(() => { loadTables(); loadSessions(); loadPackages(); loadCourierPending(); }, 10000);
     return () => clearInterval(iv);
   }, []);
 
@@ -574,51 +597,82 @@ export default function CashierPage() {
         </div>
       </div>
 
-      {/* ══════════ SIPARISLER TAB - SPLIT VIEW ══════════ */}
+      {/* ══════════ SIPARISLER TAB - GRID VIEW ══════════ */}
       {tab === "orders" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* LEFT: MASALAR */}
+        <div className="space-y-6">
+          {/* MASALAR GRID */}
           <div>
             <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
               Masalar
-              {tableSessions.length > 0 && <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full">{tableSessions.length}</span>}
+              {tableSessions.length > 0 && <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full">{tableSessions.length} acik</span>}
             </h3>
-            <div className="space-y-3">
-              {tableSessions.map((ts) => {
-                const elapsed = Math.floor((Date.now() - new Date(ts.session.openedAt).getTime()) / 60000);
-                const allItems = ts.orders.flatMap((o) => o.items);
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
+              {allTables.filter((t) => t.isActive).map((table) => {
+                const session = tableSessions.find((ts) => ts.session.tableNumber === table.number);
+                const unpaidTotal = session ? session.orders.filter((o) => !o.paymentMethod).reduce((s, o) => s + o.total, 0) : 0;
+                const paidTotal = session ? session.orders.filter((o) => o.paymentMethod).reduce((s, o) => s + o.total, 0) : 0;
+                const hasSession = !!session;
+                const hasUnpaid = unpaidTotal > 0;
+                const elapsed = session ? Math.floor((Date.now() - new Date(session.session.openedAt).getTime()) / 60000) : 0;
+
                 return (
-                  <div key={ts.session.id} className="card cursor-pointer hover:border-amber-500/30 transition-all" onClick={() => openTableDetail(ts)}>
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-amber-500/20 text-amber-400 font-extrabold text-lg w-10 h-10 rounded-xl flex items-center justify-center">{ts.session.tableNumber}</div>
-                        <div>
-                          <p className="font-semibold text-white text-sm">Masa {ts.session.tableNumber}</p>
-                          <p className="text-white/30 text-xs">{elapsed} dk &middot; {ts.orders.length} siparis</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-amber-400 font-extrabold text-xl">{ts.session.total.toFixed(0)} TL</p>
-                        {ts.unpaidCount > 0 && <p className="text-red-400/70 text-[10px]">{ts.unpaidCount} odenmemis</p>}
-                      </div>
-                    </div>
-                    <div className="space-y-0.5 mt-2">
-                      {allItems.slice(0, 4).map((item, i) => (
-                        <div key={i} className="flex justify-between text-xs text-white/50">
-                          <span>{item.quantity}x {item.name}</span>
-                          <span>{item.totalPrice.toFixed(0)} TL</span>
-                        </div>
-                      ))}
-                      {allItems.length > 4 && <p className="text-white/20 text-[10px]">+{allItems.length - 4} urun daha</p>}
-                    </div>
+                  <div
+                    key={table.id}
+                    onClick={() => session && openTableDetail(session)}
+                    className={`relative aspect-square rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-[0.96] ${
+                      hasUnpaid
+                        ? "bg-amber-500/10 border-amber-500/50 hover:border-amber-400 shadow-lg shadow-amber-500/10"
+                        : hasSession
+                        ? "bg-green-500/10 border-green-500/40 hover:border-green-400"
+                        : "bg-surface-1 border-border hover:border-white/20"
+                    }`}
+                  >
+                    <span className={`text-2xl sm:text-3xl font-extrabold ${
+                      hasUnpaid ? "text-amber-400" : hasSession ? "text-green-400" : "text-white/20"
+                    }`}>
+                      {table.number}
+                    </span>
+
+                    {hasUnpaid && (
+                      <span className="text-amber-300 font-bold text-xs sm:text-sm mt-1">
+                        {unpaidTotal.toFixed(0)} TL
+                      </span>
+                    )}
+
+                    {hasSession && !hasUnpaid && (
+                      <span className="text-green-400/70 font-medium text-[10px] sm:text-xs mt-1">
+                        Odendi
+                      </span>
+                    )}
+
+                    {!hasSession && (
+                      <span className="text-white/10 text-[10px] mt-1">Bos</span>
+                    )}
+
+                    {hasSession && (
+                      <span className="absolute top-1 right-1.5 text-[9px] text-white/30">
+                        {elapsed}dk
+                      </span>
+                    )}
+
+                    {session && session.unpaidCount > 1 && (
+                      <span className="absolute top-1 left-1.5 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                        {session.unpaidCount}
+                      </span>
+                    )}
                   </div>
                 );
               })}
-              {tableSessions.length === 0 && <div className="text-center py-8 text-white/20 text-sm">Acik masa yok</div>}
+              {allTables.filter((t) => t.isActive).length === 0 && (
+                <div className="col-span-full text-center py-8 text-white/20 text-sm">
+                  Masa yok — Ayarlar bölümünden masa ekleyin
+                </div>
+              )}
             </div>
           </div>
 
-          {/* RIGHT: PAKETLER + KURYE */}
+          {/* PAKETLER + KURYE */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-6">
             <div>
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -733,6 +787,7 @@ export default function CashierPage() {
               {courierGroups.length === 0 && <div className="text-center py-6 text-white/20 text-sm">Kuryede bekleyen nakit yok</div>}
             </div>
           </div>
+        </div>
         </div>
       )}
 
