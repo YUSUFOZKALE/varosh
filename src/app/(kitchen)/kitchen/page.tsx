@@ -210,7 +210,8 @@ export default function KitchenPage() {
   const onTheWayOrders = orders.filter((o) => o.status === "on_the_way");
   const deliveredOrders = orders.filter((o) => o.status === "delivered");
 
-  const newDeliveryOrders = newOrders.filter((o) => o.deliveryAddress);
+  const clusterOrderIds = new Set(clusters.flatMap((c) => c.orderIds));
+  const newDeliveryUnclustered = newOrders.filter((o) => o.deliveryAddress && !clusterOrderIds.has(o.id));
 
   const tableGroups: Record<number, KitchenOrder[]> = {};
   const gelAlOrders: KitchenOrder[] = [];
@@ -269,8 +270,64 @@ export default function KitchenPage() {
             <h2 className="text-blue-400 font-bold text-sm">YENI SIPARISLER</h2>
           </div>
           <div className="space-y-3">
-            {/* Paket siparisleri - her biri ayri ayri */}
-            {newDeliveryOrders.map((order) => {
+            {/* Paket siparisleri - yon kumelemesi */}
+            {clusters.map((cluster) => (
+              <div key={cluster.direction} className="bg-surface-1 rounded-xl border-l-4 border-purple-500 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-purple-500/5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{cluster.emoji}</span>
+                    <span className="font-bold text-sm">{cluster.direction}</span>
+                    <span className="text-[10px] bg-purple-600/20 text-purple-400 px-1.5 py-0.5 rounded">
+                      {cluster.orders.length} Paket
+                    </span>
+                  </div>
+                  {cluster.avgDist > 0 && (
+                    <span className="text-xs text-white/30">{cluster.avgDist.toFixed(1)} km</span>
+                  )}
+                </div>
+                <div className="p-3 space-y-2">
+                  {cluster.orders.map((co) => {
+                    const fullOrder = orders.find((o) => o.id === co.id);
+                    const elapsed = getElapsed(co.createdAt);
+                    return (
+                      <div key={co.id} className={`bg-surface-2 rounded-lg p-2 ${elapsed > 10 ? "ring-1 ring-red-500/50" : ""}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm">#{co.id}</span>
+                            {co.customerName && <span className="text-xs text-white/40">{co.customerName}</span>}
+                          </div>
+                          <span className={`text-xs font-mono ${elapsed > 10 ? "text-red-400 font-bold" : "text-white/40"}`}>{elapsed}dk</span>
+                        </div>
+                        {fullOrder && (
+                          <div className="space-y-1.5">
+                            {fullOrder.items.map((item) => renderItemDetail(item, "purple"))}
+                          </div>
+                        )}
+                        {fullOrder?.notes && (
+                          <div className="mt-1.5">
+                            <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded px-1.5 py-0.5 font-bold">SIPARIS NOTU: {fullOrder.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="p-3 pt-0">
+                  <button
+                    onClick={() => acceptCluster(cluster.orderIds, cluster.direction)}
+                    disabled={acceptingCluster === cluster.direction}
+                    className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-base transition-all active:scale-[0.97]"
+                  >
+                    {acceptingCluster === cluster.direction
+                      ? "Kabul ediliyor..."
+                      : `KABUL ET — ${cluster.direction} (${cluster.orders.length})`}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* Konumsuz paket siparisleri */}
+            {newDeliveryUnclustered.map((order) => {
               const elapsed = getElapsed(order.createdAt);
               const isUrgent = elapsed > 10;
               return (
