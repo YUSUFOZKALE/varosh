@@ -210,8 +210,7 @@ export default function KitchenPage() {
   const onTheWayOrders = orders.filter((o) => o.status === "on_the_way");
   const deliveredOrders = orders.filter((o) => o.status === "delivered");
 
-  const clusterOrderIds = new Set(clusters.flatMap((c) => c.orderIds || c.orders.map((o) => o.id)));
-  const newDeliveryUnclustered = newOrders.filter((o) => o.deliveryAddress && !clusterOrderIds.has(o.id));
+  const newDeliveryOrders = newOrders.filter((o) => o.deliveryAddress);
 
   const tableGroups: Record<number, KitchenOrder[]> = {};
   const gelAlOrders: KitchenOrder[] = [];
@@ -270,68 +269,8 @@ export default function KitchenPage() {
             <h2 className="text-blue-400 font-bold text-sm">YENI SIPARISLER</h2>
           </div>
           <div className="space-y-3">
-            {/* Direction-based delivery clusters */}
-            {clusters.map((cluster) => {
-              const clusterItems = cluster.orders.map((co) => {
-                const full = newOrders.find((o) => o.id === co.id);
-                return full || co;
-              });
-              return (
-                <div key={cluster.direction} className="bg-surface-1 rounded-xl border-l-4 border-purple-500 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-purple-500/5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{cluster.emoji}</span>
-                      <span className="font-bold text-sm">{cluster.direction}</span>
-                      <span className="text-[10px] bg-purple-600/20 text-purple-400 px-1.5 py-0.5 rounded">
-                        {cluster.orders.length} Paket
-                      </span>
-                    </div>
-                    <span className="text-xs text-white/30">{cluster.avgDist} km</span>
-                  </div>
-
-                  <div className="p-3 space-y-2">
-                    {clusterItems.map((order) => {
-                      const elapsed = getElapsed(order.createdAt);
-                      const full = order as KitchenOrder;
-                      return (
-                        <div key={order.id} className="bg-surface-2 rounded-lg p-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm">#{order.id}</span>
-                              <span className="text-xs text-white/40">{order.customerName || "Isimsiz"}</span>
-                            </div>
-                            <span className={`text-xs font-mono ${elapsed > 10 ? "text-red-400 font-bold" : "text-white/40"}`}>
-                              {elapsed}dk
-                            </span>
-                          </div>
-                          {full.items && full.items.length > 0 && (
-                            <div className="space-y-1.5">
-                              {full.items.map((item) => renderItemDetail(item, "purple"))}
-                            </div>
-                          )}
-                          <p className="text-[10px] text-white/20 mt-1 truncate">{order.deliveryAddress}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="p-3 pt-0">
-                    <button
-                      onClick={() => acceptCluster(cluster.orderIds || cluster.orders.map((o) => o.id), cluster.direction)}
-                      disabled={acceptingCluster === cluster.direction}
-                      className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-base transition-all active:scale-[0.97]"
-                    >
-                      {acceptingCluster === cluster.direction
-                        ? "Kabul ediliyor..."
-                        : `KUMEYI KABUL ET (${cluster.orders.length})`}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Unclustered delivery orders (no location) */}
-            {newDeliveryUnclustered.map((order) => {
+            {/* Paket siparisleri - her biri ayri ayri */}
+            {newDeliveryOrders.map((order) => {
               const elapsed = getElapsed(order.createdAt);
               const isUrgent = elapsed > 10;
               return (
@@ -376,7 +315,7 @@ export default function KitchenPage() {
             {sortedTableNumbers.map((tableNum) => {
               const tableOrders = tableGroups[tableNum];
               const clusterKey = `table-${tableNum}`;
-              return tableOrders.length > 1 ? (
+              return (
                 <div key={clusterKey} className="bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
                     <div className="flex items-center gap-2">
@@ -420,51 +359,10 @@ export default function KitchenPage() {
                     >
                       {acceptingCluster === clusterKey
                         ? "Kabul ediliyor..."
-                        : `KUMEYI KABUL ET — Masa ${tableNum} (${tableOrders.length})`}
+                        : `KABUL ET — Masa ${tableNum} (${tableOrders.length})`}
                     </button>
                   </div>
                 </div>
-              ) : (
-                tableOrders.map((order) => {
-                  const elapsed = getElapsed(order.createdAt);
-                  const isUrgent = elapsed > 10;
-                  return (
-                    <div
-                      key={order.id}
-                      className={`bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden ${
-                        isUrgent ? "ring-2 ring-red-500/50 animate-pulse" : ""
-                      }`}
-                    >
-                      <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-lg">#{order.id}</span>
-                          <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-1.5 py-0.5 rounded">Masa {tableNum}</span>
-                          {order.source === "qr" && <span className="text-[10px] bg-blue-600/20 text-blue-400 px-1 py-0.5 rounded">QR</span>}
-                        </div>
-                        <span className={`text-sm font-mono ${isUrgent ? "text-red-400 font-bold" : "text-white/40"}`}>
-                          {elapsed}dk
-                        </span>
-                      </div>
-                      {order.customerName && <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>}
-                      <div className="p-3 space-y-1.5">
-                        {order.items.map((item) => renderItemDetail(item, "amber"))}
-                      </div>
-                      {order.notes && (
-                        <div className="px-3 pb-2">
-                          <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">SIPARIS NOTU: {order.notes}</p>
-                        </div>
-                      )}
-                      <div className="p-3 pt-0">
-                        <button
-                          onClick={() => updateStatus(order.id, "preparing")}
-                          className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-base transition-all active:scale-[0.97]"
-                        >
-                          KABUL ET — HAZIRLA
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
               );
             })}
 
