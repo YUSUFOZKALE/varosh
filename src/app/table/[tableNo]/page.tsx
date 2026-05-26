@@ -122,12 +122,28 @@ export default function TableOrderPage() {
   }, [categories, isScrolling]);
 
   function handleItemClick(item: MenuItem) {
-    if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
-    setCustomizeItem(item);
-    setCustRemoved(new Set());
-    setCustExtras(new Set());
-    setCustQty(1);
-    setCustNotes("");
+    const itemOpts = options.filter((o) => o.menuItemId === item.id);
+    if (itemOpts.length > 0) {
+      if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
+      setCustomizeItem(item);
+      setCustRemoved(new Set());
+      setCustExtras(new Set());
+      setCustQty(1);
+      setCustNotes("");
+    } else {
+      addSimpleItem(item);
+    }
+  }
+
+  function addSimpleItem(item: MenuItem) {
+    const key = `${item.id}_simple`;
+    setCart((prev) => {
+      const existing = prev.find((c) => c.key === key);
+      if (existing) {
+        return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + 1 } : c);
+      }
+      return [...prev, { key, menuItemId: item.id, name: item.name, price: item.price, quantity: 1, imageUrl: item.imageUrl, notes: "", removedIngredients: [], selectedExtras: [] }];
+    });
   }
 
   function addCustomizedToCart() {
@@ -307,6 +323,8 @@ export default function TableOrderPage() {
                   const unitPrice = item.price + extrasCost;
                   const totalPrice = unitPrice * custQty;
 
+                  const hasOpts = options.some((o) => o.menuItemId === item.id);
+
                   return (
                     <div key={item.id} className="relative">
                       <button
@@ -334,6 +352,13 @@ export default function TableOrderPage() {
                           <p className="text-amber-400 font-bold text-xs mt-1">{item.price.toFixed(0)} TL</p>
                         </div>
                       </button>
+                      {qty > 0 && !hasOpts && (
+                        <div className="flex items-center justify-center gap-0 mt-1.5">
+                          <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center text-white/60 active:bg-neutral-700 text-sm">−</button>
+                          <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
+                          <button onClick={(e) => { e.stopPropagation(); addSimpleItem(item); }} className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-black text-sm font-bold active:bg-amber-400">+</button>
+                        </div>
+                      )}
                       {isExpanded && (
                         <div className="absolute inset-x-0 top-0 z-40 bg-neutral-900 border-2 border-amber-500/60 rounded-xl overflow-hidden shadow-2xl shadow-black/40">
                           <div className="px-3 py-2 border-b border-neutral-800/60">

@@ -69,7 +69,8 @@ export default function PosPage() {
         fetch("/api/menu/options"),
         fetch("/api/orders?limit=100"),
       ]);
-      const cats = await cRes.json();
+      const allCats = await cRes.json();
+      const cats = allCats.filter((c: Category & { isActive?: boolean }) => c.isActive !== false);
       setCategories(cats);
       setItems(await iRes.json());
       setCustomers(await custRes.json());
@@ -178,16 +179,33 @@ export default function PosPage() {
   const [custNotes, setCustNotes] = useState("");
 
   function handleItemClick(item: MenuItem) {
-    if (customizeItem?.id === item.id) {
-      setCustomizeItem(null);
-      return;
+    const itemOpts = options.filter((o) => o.menuItemId === item.id);
+    if (itemOpts.length > 0) {
+      if (customizeItem?.id === item.id) {
+        setCustomizeItem(null);
+        return;
+      }
+      const effectivePrice = getEffectivePrice(item);
+      setCustomizeItem({ ...item, price: effectivePrice });
+      setCustRemoved(new Set());
+      setCustExtras(new Set());
+      setCustQty(1);
+      setCustNotes("");
+    } else {
+      addSimpleItem(item);
     }
+  }
+
+  function addSimpleItem(item: MenuItem) {
     const effectivePrice = getEffectivePrice(item);
-    setCustomizeItem({ ...item, price: effectivePrice });
-    setCustRemoved(new Set());
-    setCustExtras(new Set());
-    setCustQty(1);
-    setCustNotes("");
+    const key = `${item.id}_simple`;
+    setCart((prev) => {
+      const existing = prev.find((c) => c.key === key);
+      if (existing) {
+        return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + 1, price: effectivePrice } : c);
+      }
+      return [...prev, { key, menuItemId: item.id, name: item.name, price: effectivePrice, quantity: 1, imageUrl: item.imageUrl, removedIngredients: [], selectedExtras: [], notes: "" }];
+    });
   }
 
   function addCustomizedToCart() {
@@ -476,6 +494,7 @@ export default function PosPage() {
                   {catItems.map((item) => {
                     const qty = cart.filter(c => c.menuItemId === item.id).reduce((s, c) => s + c.quantity, 0);
                     const isExpanded = customizeItem?.id === item.id;
+                    const hasOpts = options.some((o) => o.menuItemId === item.id);
                     const itemOpts = isExpanded ? options.filter((o) => o.menuItemId === item.id) : [];
                     const ingredients = itemOpts.filter((o) => o.groupName === "Icindekiler");
                     const extraOpts = itemOpts.filter((o) => o.groupName === "Ekstralar");
@@ -523,6 +542,13 @@ export default function PosPage() {
                             </div>
                           </div>
                         </button>
+                        {qty > 0 && !hasOpts && !isExpanded && (
+                          <div className="flex items-center justify-center gap-1 mt-1.5">
+                            <button onClick={(e) => { e.stopPropagation(); updateQty(`${item.id}_simple`, -1); }} className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center text-white/60 active:bg-neutral-700 text-sm font-bold">−</button>
+                            <span className="text-white font-bold text-xs min-w-[20px] text-center">{qty}</span>
+                            <button onClick={(e) => { e.stopPropagation(); addSimpleItem(item); }} className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-black text-sm font-bold active:bg-amber-400">+</button>
+                          </div>
+                        )}
                         {isExpanded && (
                           <div className="absolute inset-x-0 top-0 z-40 bg-neutral-900 border-2 border-amber-500/60 rounded-2xl overflow-hidden shadow-2xl shadow-black/40">
                             <div className="px-3 py-2 border-b border-neutral-800/60">

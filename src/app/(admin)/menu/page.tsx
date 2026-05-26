@@ -177,7 +177,7 @@ export default function MenuPage() {
     const body = {
       name: fd.get("name") as string,
       sortOrder: parseInt(fd.get("sortOrder") as string) || 0,
-      isActive: true,
+      isActive: editingCat ? editingCat.isActive : true,
     };
     if (editingCat) {
       await fetch(`/api/menu/categories/${editingCat.id}`, {
@@ -194,6 +194,15 @@ export default function MenuPage() {
     }
     setCatModal(false);
     setEditingCat(null);
+    load();
+  }
+
+  async function toggleCatActive(cat: Category) {
+    await fetch(`/api/menu/categories/${cat.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !cat.isActive }),
+    });
     load();
   }
 
@@ -418,9 +427,10 @@ export default function MenuPage() {
             onClick={() => setSelectedCat(cat.id)}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
               selectedCat === cat.id ? "bg-accent text-black" : "bg-surface-2 text-white/60 hover:text-white"
-            }`}
+            } ${!cat.isActive ? "opacity-50" : ""}`}
           >
             {cat.name} ({items.filter((i) => i.categoryId === cat.id).length})
+            {!cat.isActive && <span className="ml-1 text-[9px] text-red-400">●</span>}
           </button>
         ))}
       </div>
@@ -440,13 +450,19 @@ export default function MenuPage() {
               onDragEnd={() => { setCatDragId(null); setCatDragOverId(null); }}
               className={`bg-surface-2 rounded-xl p-3 flex items-center justify-between cursor-grab active:cursor-grabbing transition-all ${
                 catDragId === cat.id ? "opacity-40" : ""
-              } ${catDragOverId === cat.id && catDragId !== cat.id ? "ring-2 ring-amber-500" : ""}`}
+              } ${catDragOverId === cat.id && catDragId !== cat.id ? "ring-2 ring-amber-500" : ""} ${
+                !cat.isActive ? "opacity-50" : ""
+              }`}
             >
               <div className="flex items-center gap-2">
                 <svg className="w-3.5 h-3.5 text-white/15 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
                 <span className="text-sm">{cat.name}</span>
+                {!cat.isActive && <span className="text-[9px] text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded">Pasif</span>}
               </div>
               <div className="flex gap-1">
+                <button onClick={() => toggleCatActive(cat)} className={`text-xs px-1 ${cat.isActive ? "text-green-400/50 hover:text-green-400" : "text-red-400/50 hover:text-red-400"}`} title={cat.isActive ? "Pasife Al" : "Aktif Et"}>
+                  {cat.isActive ? "🟢" : "🔴"}
+                </button>
                 <button onClick={() => { setEditingCat(cat); setCatModal(true); }} className="text-white/30 hover:text-white text-xs px-1">✏️</button>
                 <button onClick={() => deleteCat(cat.id)} className="text-white/30 hover:text-red-400 text-xs px-1">🗑️</button>
               </div>
@@ -554,10 +570,13 @@ export default function MenuPage() {
 
               {/* Info */}
               <div className="p-4">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="min-w-0 flex-1">
                     <h4 className="font-semibold text-sm">{item.name}</h4>
                     <p className="text-xs text-white/40">{cat?.name}</p>
+                    {item.description && (
+                      <p className="text-xs text-white/30 mt-1 line-clamp-2">{item.description}</p>
+                    )}
                   </div>
                   <button
                     onClick={() => toggleAvailability(item)}
@@ -568,16 +587,19 @@ export default function MenuPage() {
                     {item.isAvailable ? "Aktif" : "Pasif"}
                   </button>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mt-2">
                   <div className="flex flex-col">
                     <span className="text-amber-400 font-bold text-sm">{item.price} TL <span className="text-white/20 font-normal text-[10px]">mekan</span></span>
                     {item.deliveryPrice && (
                       <span className="text-orange-400/70 font-semibold text-xs">{item.deliveryPrice} TL <span className="text-white/20 font-normal text-[10px]">paket</span></span>
                     )}
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => openItemModal(item)} className="text-white/30 hover:text-white text-sm px-1">✏️</button>
-                    <button onClick={() => deleteItem(item.id)} className="text-white/30 hover:text-red-400 text-sm px-1">🗑️</button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-white/20">{item.prepTimeMinutes} dk</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => openItemModal(item)} className="text-white/30 hover:text-white text-sm px-1">✏️</button>
+                      <button onClick={() => deleteItem(item.id)} className="text-white/30 hover:text-red-400 text-sm px-1">🗑️</button>
+                    </div>
                   </div>
                 </div>
               </div>
