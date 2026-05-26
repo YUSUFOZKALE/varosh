@@ -122,17 +122,12 @@ export default function TableOrderPage() {
   }, [categories, isScrolling]);
 
   function handleItemClick(item: MenuItem) {
-    const itemOpts = options.filter((o) => o.menuItemId === item.id);
-    if (itemOpts.length > 0) {
-      if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
-      setCustomizeItem(item);
-      setCustRemoved(new Set());
-      setCustExtras(new Set());
-      setCustQty(1);
-      setCustNotes("");
-    } else {
-      addSimpleItem(item);
-    }
+    if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
+    setCustomizeItem(item);
+    setCustRemoved(new Set());
+    setCustExtras(new Set());
+    setCustQty(1);
+    setCustNotes("");
   }
 
   function addSimpleItem(item: MenuItem) {

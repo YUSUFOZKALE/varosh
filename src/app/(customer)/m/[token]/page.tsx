@@ -100,17 +100,12 @@ export default function CustomerOrderPage() {
   }, [categories, isScrolling]);
 
   function handleItemClick(item: MenuItem) {
-    const itemOpts = options.filter((o) => o.menuItemId === item.id);
-    if (itemOpts.length > 0) {
-      if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
-      setCustomizeItem(item);
-      setCustRemoved(new Set());
-      setCustExtras(new Set());
-      setCustQty(1);
-      setCustNotes("");
-    } else {
-      addSimpleItem(item);
-    }
+    if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
+    setCustomizeItem(item);
+    setCustRemoved(new Set());
+    setCustExtras(new Set());
+    setCustQty(1);
+    setCustNotes("");
   }
 
   function addSimpleItem(item: MenuItem) {
@@ -357,7 +352,7 @@ export default function CustomerOrderPage() {
                                     )}
                                   </button>
                                   <span className="text-white font-bold text-sm min-w-[28px] text-center">{qty}</span>
-                                  <button onClick={() => handleItemClick(item)} className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
+                                  <button onClick={() => addSimpleItem(item)} className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center text-black active:bg-amber-400">
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
                                   </button>
                                 </div>

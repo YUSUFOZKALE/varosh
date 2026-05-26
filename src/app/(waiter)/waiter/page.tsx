@@ -630,7 +630,7 @@ export default function WaiterPage() {
                   return (
                     <div key={item.id} className="relative">
                       <button
-                        onClick={() => hasOptions ? openItemDetail(item) : quickAdd(item)}
+                        onClick={() => openItemDetail(item)}
                         className={`w-full text-left rounded-xl transition-all active:scale-[0.97] border overflow-hidden ${inCart ? "bg-amber-500/10 border-amber-500/30" : "bg-surface-1 border-border"}`}
                       >
                         {item.imageUrl ? (

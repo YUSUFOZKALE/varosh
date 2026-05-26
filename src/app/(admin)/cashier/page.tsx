@@ -582,20 +582,11 @@ export default function CashierPage() {
   }
 
   function handleAddItemTap(item: MenuItemRaw) {
-    const hasOptions = menuOptionsAll.some((o) => o.menuItemId === item.id);
-    if (hasOptions) {
-      if (addEditItem?.id === item.id) { setAddEditItem(null); return; }
-      setAddEditItem(item);
-      setAddItemNotes("");
-      setAddItemOpts([]);
-      setAddItemQty(1);
-    } else {
-      setAddCart((prev) => {
-        const existing = prev.find((c) => c.menuItemId === item.id && !c.notes && c.selectedOptions.length === 0);
-        if (existing) return prev.map((c) => c === existing ? { ...c, qty: c.qty + 1 } : c);
-        return [...prev, { menuItemId: item.id, name: item.name, price: item.price, qty: 1, notes: "", selectedOptions: [], removedIngredients: [] }];
-      });
-    }
+    if (addEditItem?.id === item.id) { setAddEditItem(null); return; }
+    setAddEditItem(item);
+    setAddItemNotes("");
+    setAddItemOpts([]);
+    setAddItemQty(1);
   }
 
   function confirmAddItem() {
