@@ -239,7 +239,7 @@ export default function WaiterPage() {
       if (existing) {
         return prev.map((c) => c === existing ? { ...c, qty: c.qty + itemQty } : c);
       }
-      const basePrice = useDelivery ? (target.deliveryPrice || target.price) : target.price;
+      const basePrice = useDelivery ? (target.deliveryPrice ?? target.price) : target.price;
       return [...prev, {
         menuItemId: target.id,
         name: target.name,
@@ -259,7 +259,7 @@ export default function WaiterPage() {
 
   function quickAdd(item: MenuItem) {
     const useDelivery = tab === "paket";
-    const basePrice = useDelivery ? (item.deliveryPrice || item.price) : item.price;
+    const basePrice = useDelivery ? (item.deliveryPrice ?? item.price) : item.price;
     setCart((prev) => {
       const existing = prev.find((c) => c.menuItemId === item.id && !c.notes && c.selectedOptions.length === 0 && c.removedIngredients.length === 0);
       if (existing) return prev.map((c) => c === existing ? { ...c, qty: c.qty + 1 } : c);
@@ -409,7 +409,7 @@ export default function WaiterPage() {
   }
 
   function getItemPrice(item: MenuItem) {
-    return tab === "paket" ? (item.deliveryPrice || item.price) : item.price;
+    return tab === "paket" ? (item.deliveryPrice ?? item.price) : item.price;
   }
 
   function switchTab(newTab: "masa" | "gelal" | "paket") {
@@ -435,7 +435,7 @@ export default function WaiterPage() {
   const tableTotal = activeOrders.reduce((s, o) => s + o.total, 0);
 
   return (
-    <div className="flex flex-col h-[100dvh]">
+    <div className="flex flex-col h-full">
       {/* ─── TOP: Tab bar ─── */}
       <div className="shrink-0 px-3 pt-3 pb-2">
         <div className="flex gap-1 bg-surface-1 rounded-xl p-1">
@@ -703,7 +703,7 @@ export default function WaiterPage() {
       {showCart && cart.length > 0 && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowCart(false)} />
-          <div className="fixed bottom-[72px] left-0 right-0 z-50 bg-neutral-900 border-t border-amber-500/30 rounded-t-2xl max-h-[50vh] overflow-y-auto px-4 py-3 space-y-1.5">
+          <div className="fixed bottom-[72px] left-0 right-0 max-w-lg mx-auto z-50 bg-neutral-900 border-t border-amber-500/30 rounded-t-2xl max-h-[50vh] overflow-y-auto px-4 py-3 space-y-1.5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-white font-bold text-sm">Sepet</span>
               <button onClick={() => setShowCart(false)} className="text-white/30 text-sm">Kapat</button>
@@ -730,7 +730,7 @@ export default function WaiterPage() {
       )}
 
       {/* ─── BOTTOM: Fixed submit bar ─── */}
-      <div className="shrink-0 border-t border-border bg-neutral-900/95 px-3 py-3 z-30">
+      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto border-t border-border bg-neutral-900/95 px-3 py-3 z-30">
         {cart.length > 0 ? (
           <div className="flex gap-2">
             <button
@@ -750,7 +750,7 @@ export default function WaiterPage() {
           </div>
         ) : (
           <div className="text-center text-white/20 text-sm py-2">
-            {tab === "masa" && !activeTable ? "Masa secip urun ekleyin" : "Menuден urun ekleyin"}
+            {tab === "masa" && !activeTable ? "Masa secip urun ekleyin" : "Menuden urun ekleyin"}
           </div>
         )}
       </div>

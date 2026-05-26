@@ -45,7 +45,7 @@ export async function POST(
     if (!menuItem) continue;
 
     const qty = item.quantity || 1;
-    let price = menuItem.deliveryPrice || menuItem.price;
+    let price = menuItem.deliveryPrice ?? menuItem.price;
 
     let extraCost = 0;
     if (item.selectedOptions && Array.isArray(item.selectedOptions)) {

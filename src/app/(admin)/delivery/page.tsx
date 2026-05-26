@@ -468,7 +468,7 @@ export default function DeliveryPage() {
                     size="sm"
                     onClick={() => {
                       const phone = wpPhone.replace(/\D/g, "").replace(/^0/, "90");
-                      const text = encodeURIComponent(`Merhaba${wpName ? " " + wpName : ""}, siparisiniizi buradan verebilirsiniz:\n${wpLink}`);
+                      const text = encodeURIComponent(`Merhaba${wpName ? " " + wpName : ""}, siparisinizi buradan verebilirsiniz:\n${wpLink}`);
                       window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
                     }}
                   >

@@ -43,7 +43,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       .all();
     const sorted = batchOrders.map((o) => o.id).sort((a, b) => a - b);
     const idx = sorted.indexOf(order.id) + 1;
-    batchLabel = `${sorted.length}/${idx}`;
+    batchLabel = `${idx}/${sorted.length}`;
   }
 
   return NextResponse.json({ ...order, items, batchLabel });

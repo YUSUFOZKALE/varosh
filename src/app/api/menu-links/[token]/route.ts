@@ -55,7 +55,7 @@ export async function GET(
       id: i.id,
       name: i.name,
       description: i.description,
-      price: i.deliveryPrice || i.price,
+      price: i.deliveryPrice ?? i.price,
       categoryId: i.categoryId,
       imageUrl: i.imageUrl,
     })),

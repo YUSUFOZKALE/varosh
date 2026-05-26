@@ -14,6 +14,7 @@ interface CartItem {
   price: number;
   quantity: number;
   imageUrl: string | null;
+  notes: string;
   removedIngredients: string[];
   selectedExtras: number[];
 }
@@ -41,7 +42,7 @@ export default function CustomerOrderPage() {
   const [notes, setNotes] = useState("");
   const [orderResult, setOrderResult] = useState<{ orderId: number; total: number; trackingToken: string } | null>(null);
   const [showCart, setShowCart] = useState(false);
-  const [deliveryFee, setDeliveryFee] = useState(20);
+  const [deliveryFee, setDeliveryFee] = useState(0);
   const [minOrder, setMinOrder] = useState(0);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [custRemoved, setCustRemoved] = useState<Set<string>>(new Set());
@@ -64,8 +65,8 @@ export default function CustomerOrderPage() {
     setCategories(data.categories);
     setItems(data.items);
     setOptions(data.options || []);
-    setDeliveryFee(data.deliveryFee || 20);
-    setMinOrder(data.minOrderAmount || 0);
+    setDeliveryFee(data.deliveryFee ?? 0);
+    setMinOrder(data.minOrderAmount ?? 0);
     if (data.categories.length > 0) setActiveCategory(data.categories[0].id);
     setLoading(false);
   }, [token]);
@@ -119,7 +120,7 @@ export default function CustomerOrderPage() {
       if (existing) {
         return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + 1 } : c);
       }
-      return [...prev, { key, menuItemId: item.id, name: item.name, price: item.price, quantity: 1, imageUrl: item.imageUrl, removedIngredients: [], selectedExtras: [] }];
+      return [...prev, { key, menuItemId: item.id, name: item.name, price: item.price, quantity: 1, imageUrl: item.imageUrl, notes: "", removedIngredients: [], selectedExtras: [] }];
     });
   }
 
@@ -134,7 +135,7 @@ export default function CustomerOrderPage() {
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
       if (existing) return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + custQty } : c);
-      return [...prev, { key, menuItemId: customizeItem.id, name: customizeItem.name, price: finalPrice, quantity: custQty, imageUrl: customizeItem.imageUrl, removedIngredients: removedArr, selectedExtras: extrasArr }];
+      return [...prev, { key, menuItemId: customizeItem.id, name: customizeItem.name, price: finalPrice, quantity: custQty, imageUrl: customizeItem.imageUrl, notes: custNotes.trim(), removedIngredients: removedArr, selectedExtras: extrasArr }];
     });
     setCustomizeItem(null);
   }
@@ -164,6 +165,7 @@ export default function CustomerOrderPage() {
         items: cart.map((c) => ({
           menuItemId: c.menuItemId,
           quantity: c.quantity,
+          notes: c.notes || undefined,
           selectedOptions: c.selectedExtras.length > 0 ? c.selectedExtras : undefined,
           removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
         })),
@@ -213,7 +215,7 @@ export default function CustomerOrderPage() {
           <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto">
             <svg className="w-10 h-10 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
           </div>
-          <h1 className="text-2xl font-bold text-white">Siparisiniiz Alindi!</h1>
+          <h1 className="text-2xl font-bold text-white">Siparisiniz Alindi!</h1>
           <div className="bg-neutral-900 rounded-2xl p-5 space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-white/50 text-sm">Siparis No</span>

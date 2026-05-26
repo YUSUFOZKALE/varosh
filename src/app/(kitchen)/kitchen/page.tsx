@@ -129,8 +129,8 @@ export default function KitchenPage() {
     load();
   }
 
-  async function acceptTableCluster(orderIds: number[]) {
-    setAcceptingCluster("table");
+  async function acceptTableCluster(orderIds: number[], clusterKey?: string) {
+    setAcceptingCluster(clusterKey || "table");
     await fetch("/api/delivery/smart-queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -201,7 +201,7 @@ export default function KitchenPage() {
     if (!order.batchId) return null;
     const sameB = orders.filter((o) => o.batchId === order.batchId).sort((a, b) => a.id - b.id);
     const idx = sameB.findIndex((o) => o.id === order.id) + 1;
-    return `${sameB.length}/${idx}`;
+    return `${idx}/${sameB.length}`;
   }
 
   const newOrders = orders.filter((o) => o.status === "new");
@@ -210,9 +210,21 @@ export default function KitchenPage() {
   const onTheWayOrders = orders.filter((o) => o.status === "on_the_way");
   const deliveredOrders = orders.filter((o) => o.status === "delivered");
 
-  const newTableOrders = newOrders.filter((o) => !o.deliveryAddress);
   const clusterOrderIds = new Set(clusters.flatMap((c) => c.orderIds || c.orders.map((o) => o.id)));
   const newDeliveryUnclustered = newOrders.filter((o) => o.deliveryAddress && !clusterOrderIds.has(o.id));
+
+  const tableGroups: Record<number, KitchenOrder[]> = {};
+  const gelAlOrders: KitchenOrder[] = [];
+  for (const order of newOrders) {
+    if (order.deliveryAddress) continue;
+    if (order.tableNumber) {
+      if (!tableGroups[order.tableNumber]) tableGroups[order.tableNumber] = [];
+      tableGroups[order.tableNumber].push(order);
+    } else {
+      gelAlOrders.push(order);
+    }
+  }
+  const sortedTableNumbers = Object.keys(tableGroups).map(Number).sort((a, b) => a - b);
 
   return (
     <div className="min-h-screen bg-surface p-3">
@@ -360,97 +372,143 @@ export default function KitchenPage() {
               );
             })}
 
-            {/* Table / in-store orders — grouped as cluster */}
-            {newTableOrders.length > 1 ? (
-              <div className="bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🪑</span>
-                    <span className="font-bold text-sm">Masa Siparisleri</span>
-                    <span className="text-[10px] bg-amber-600/20 text-amber-400 px-1.5 py-0.5 rounded">
-                      {newTableOrders.length} Siparis
-                    </span>
-                  </div>
-                </div>
-                <div className="p-3 space-y-2">
-                  {newTableOrders.map((order) => {
-                    const elapsed = getElapsed(order.createdAt);
-                    return (
-                      <div key={order.id} className="bg-surface-2 rounded-lg p-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm">#{order.id}</span>
-                            {order.tableNumber && <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded">Masa {order.tableNumber}</span>}
-                            {order.source === "qr" && <span className="text-[10px] bg-blue-600/20 text-blue-400 px-1 py-0.5 rounded">QR</span>}
-                          </div>
-                          <span className={`text-xs font-mono ${elapsed > 10 ? "text-red-400 font-bold" : "text-white/40"}`}>{elapsed}dk</span>
-                        </div>
-                        <div className="space-y-1.5">
-                          {order.items.map((item) => renderItemDetail(item, "amber"))}
-                        </div>
-                        {order.notes && (
-                          <div className="mt-1.5">
-                            <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded px-1.5 py-0.5 font-bold">SIPARIS NOTU: {order.notes}</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="p-3 pt-0">
-                  <button
-                    onClick={() => acceptTableCluster(newTableOrders.map((o) => o.id))}
-                    disabled={acceptingCluster === "table"}
-                    className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-base transition-all active:scale-[0.97]"
-                  >
-                    {acceptingCluster === "table"
-                      ? "Kabul ediliyor..."
-                      : `KUMEYI KABUL ET (${newTableOrders.length} Masa)`}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              newTableOrders.map((order) => {
-                const elapsed = getElapsed(order.createdAt);
-                const isUrgent = elapsed > 10;
-                return (
-                  <div
-                    key={order.id}
-                    className={`bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden ${
-                      isUrgent ? "ring-2 ring-red-500/50 animate-pulse" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-lg">#{order.id}</span>
-                        {order.tableNumber && <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-1.5 py-0.5 rounded">Masa {order.tableNumber}</span>}
-                        {order.source === "qr" && <span className="text-[10px] bg-blue-600/20 text-blue-400 px-1 py-0.5 rounded">QR</span>}
-                      </div>
-                      <span className={`text-sm font-mono ${isUrgent ? "text-red-400 font-bold" : "text-white/40"}`}>
-                        {elapsed}dk
+            {/* Table orders — grouped by table number */}
+            {sortedTableNumbers.map((tableNum) => {
+              const tableOrders = tableGroups[tableNum];
+              const clusterKey = `table-${tableNum}`;
+              return tableOrders.length > 1 ? (
+                <div key={clusterKey} className="bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🪑</span>
+                      <span className="font-bold text-sm">Masa {tableNum}</span>
+                      <span className="text-[10px] bg-amber-600/20 text-amber-400 px-1.5 py-0.5 rounded">
+                        {tableOrders.length} Siparis
                       </span>
                     </div>
-                    {order.customerName && <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>}
-                    <div className="p-3 space-y-1.5">
-                      {order.items.map((item) => renderItemDetail(item, "amber"))}
-                    </div>
-                    {order.notes && (
-                      <div className="px-3 pb-2">
-                        <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">SIPARIS NOTU: {order.notes}</p>
-                      </div>
-                    )}
-                    <div className="p-3 pt-0">
-                      <button
-                        onClick={() => updateStatus(order.id, "preparing")}
-                        className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-base transition-all active:scale-[0.97]"
-                      >
-                        KABUL ET — HAZIRLA
-                      </button>
-                    </div>
                   </div>
-                );
-              })
-            )}
+                  <div className="p-3 space-y-2">
+                    {tableOrders.map((order) => {
+                      const elapsed = getElapsed(order.createdAt);
+                      return (
+                        <div key={order.id} className="bg-surface-2 rounded-lg p-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm">#{order.id}</span>
+                              {order.source === "qr" && <span className="text-[10px] bg-blue-600/20 text-blue-400 px-1 py-0.5 rounded">QR</span>}
+                              {order.source === "manual" && <span className="text-[10px] bg-white/10 text-white/40 px-1 py-0.5 rounded">Kasa</span>}
+                            </div>
+                            <span className={`text-xs font-mono ${elapsed > 10 ? "text-red-400 font-bold" : "text-white/40"}`}>{elapsed}dk</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {order.items.map((item) => renderItemDetail(item, "amber"))}
+                          </div>
+                          {order.notes && (
+                            <div className="mt-1.5">
+                              <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded px-1.5 py-0.5 font-bold">SIPARIS NOTU: {order.notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="p-3 pt-0">
+                    <button
+                      onClick={() => acceptTableCluster(tableOrders.map((o) => o.id), clusterKey)}
+                      disabled={acceptingCluster === clusterKey}
+                      className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-base transition-all active:scale-[0.97]"
+                    >
+                      {acceptingCluster === clusterKey
+                        ? "Kabul ediliyor..."
+                        : `KUMEYI KABUL ET — Masa ${tableNum} (${tableOrders.length})`}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                tableOrders.map((order) => {
+                  const elapsed = getElapsed(order.createdAt);
+                  const isUrgent = elapsed > 10;
+                  return (
+                    <div
+                      key={order.id}
+                      className={`bg-surface-1 rounded-xl border-l-4 border-amber-500 overflow-hidden ${
+                        isUrgent ? "ring-2 ring-red-500/50 animate-pulse" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-between px-3 py-2 bg-amber-500/5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-lg">#{order.id}</span>
+                          <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-1.5 py-0.5 rounded">Masa {tableNum}</span>
+                          {order.source === "qr" && <span className="text-[10px] bg-blue-600/20 text-blue-400 px-1 py-0.5 rounded">QR</span>}
+                        </div>
+                        <span className={`text-sm font-mono ${isUrgent ? "text-red-400 font-bold" : "text-white/40"}`}>
+                          {elapsed}dk
+                        </span>
+                      </div>
+                      {order.customerName && <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>}
+                      <div className="p-3 space-y-1.5">
+                        {order.items.map((item) => renderItemDetail(item, "amber"))}
+                      </div>
+                      {order.notes && (
+                        <div className="px-3 pb-2">
+                          <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">SIPARIS NOTU: {order.notes}</p>
+                        </div>
+                      )}
+                      <div className="p-3 pt-0">
+                        <button
+                          onClick={() => updateStatus(order.id, "preparing")}
+                          className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-base transition-all active:scale-[0.97]"
+                        >
+                          KABUL ET — HAZIRLA
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              );
+            })}
+
+            {/* Gel-al orders (no table, no delivery) */}
+            {gelAlOrders.map((order) => {
+              const elapsed = getElapsed(order.createdAt);
+              const isUrgent = elapsed > 10;
+              return (
+                <div
+                  key={order.id}
+                  className={`bg-surface-1 rounded-xl border-l-4 border-emerald-500 overflow-hidden ${
+                    isUrgent ? "ring-2 ring-red-500/50 animate-pulse" : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between px-3 py-2 bg-emerald-500/5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-lg">#{order.id}</span>
+                      <span className="text-xs text-emerald-400 font-bold">Gel-Al</span>
+                      {order.source === "phone" && <span className="text-[10px] bg-white/10 text-white/40 px-1 py-0.5 rounded">Tel</span>}
+                    </div>
+                    <span className={`text-sm font-mono ${isUrgent ? "text-red-400 font-bold" : "text-white/40"}`}>
+                      {elapsed}dk
+                    </span>
+                  </div>
+                  {order.customerName && <p className="px-3 pt-1 text-xs text-white/40">{order.customerName}</p>}
+                  <div className="p-3 space-y-1.5">
+                    {order.items.map((item) => renderItemDetail(item, "green"))}
+                  </div>
+                  {order.notes && (
+                    <div className="px-3 pb-2">
+                      <p className="text-xs text-yellow-400/80 bg-yellow-500/10 rounded-lg px-2 py-1 font-bold">SIPARIS NOTU: {order.notes}</p>
+                    </div>
+                  )}
+                  <div className="p-3 pt-0">
+                    <button
+                      onClick={() => updateStatus(order.id, "preparing")}
+                      className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-base transition-all active:scale-[0.97]"
+                    >
+                      KABUL ET — HAZIRLA
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
 
             {newOrders.length === 0 && clusters.length === 0 && (
               <div className="text-center py-8 text-white/20 text-sm">Yeni siparis yok</div>

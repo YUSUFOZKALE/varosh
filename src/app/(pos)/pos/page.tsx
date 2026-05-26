@@ -44,6 +44,9 @@ export default function PosPage() {
   const [showBills, setShowBills] = useState(false);
   const [billDetail, setBillDetail] = useState<BillDetail | null>(null);
   const [payingBill, setPayingBill] = useState(false);
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitCount, setSplitCount] = useState(2);
+  const [splitPaid, setSplitPaid] = useState<{ index: number; method: "cash" | "card"; amount: number }[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [custSearch, setCustSearch] = useState("");
   const [showCustDropdown, setShowCustDropdown] = useState(false);
@@ -71,11 +74,10 @@ export default function PosPage() {
       setItems(await iRes.json());
       setCustomers(await custRes.json());
       try {
-        const settings: { key: string; value: string }[] = await setRes.json();
-        const feeEnabled = settings.find((s) => s.key === "delivery_fee_enabled");
-        if (feeEnabled?.value === "true") {
-          const fee = settings.find((s) => s.key === "default_delivery_fee");
-          if (fee) setDeliveryFeeAmount(parseFloat(fee.value));
+        const settings: Record<string, string> = await setRes.json();
+        if (settings.delivery_fee_enabled === "true") {
+          const fee = settings.default_delivery_fee;
+          if (fee) setDeliveryFeeAmount(parseFloat(fee));
         } else {
           setDeliveryFeeAmount(0);
         }
@@ -149,7 +151,7 @@ export default function PosPage() {
   const availableItems = items.filter((i) => i.isAvailable);
 
   function getEffectivePrice(item: MenuItem): number {
-    if (orderType === "delivery") return item.deliveryPrice || item.price;
+    if (orderType === "delivery") return item.deliveryPrice ?? item.price;
     return item.price;
   }
 
@@ -159,7 +161,7 @@ export default function PosPage() {
       prev.map((c) => {
         const menuItem = items.find((i) => i.id === c.menuItemId);
         if (!menuItem) return c;
-        const base = orderType === "delivery" ? (menuItem.deliveryPrice || menuItem.price) : menuItem.price;
+        const base = orderType === "delivery" ? (menuItem.deliveryPrice ?? menuItem.price) : menuItem.price;
         let extrasCost = 0;
         for (const optId of c.selectedExtras) {
           const opt = options.find((o) => o.id === optId);
@@ -285,6 +287,7 @@ export default function PosPage() {
       setNotes("");
       toast.success(`Siparis #${order.id} basariyla olusturuldu`);
       switchToMenu();
+      load();
       setTimeout(() => setCompletedOrder(null), 3000);
     } catch {
       toast.error("Siparis gonderilirken bir hata olustu");
@@ -321,7 +324,62 @@ export default function PosPage() {
       toast.success(`Siparis #${orderId} odendi`);
       setBillDetail(null);
       setShowBills(false);
+      setSplitMode(false);
+      setSplitPaid([]);
       load();
+    } catch {
+      toast.error("Odeme islemi sirasinda bir hata olustu");
+    }
+    setPayingBill(false);
+  }
+
+  function startSplitPayment() {
+    setSplitMode(true);
+    setSplitCount(2);
+    setSplitPaid([]);
+  }
+
+  function closeSplitMode() {
+    setSplitMode(false);
+    setSplitPaid([]);
+  }
+
+  function getSplitAmounts(total: number, count: number): number[] {
+    const base = Math.floor(total / count);
+    const remainder = Math.round((total - base * count) * 100) / 100;
+    return Array.from({ length: count }, (_, i) => i === count - 1 ? base + remainder : base);
+  }
+
+  async function collectSplitPayment(orderId: number, index: number, method: "cash" | "card") {
+    if (!billDetail) return;
+    setPayingBill(true);
+    const amounts = getSplitAmounts(billDetail.total, splitCount);
+    const amount = amounts[index];
+    try {
+      const res = await fetch(`/api/orders/${orderId}/payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: method, amount, splitPayment: true }),
+      });
+      if (!res.ok) {
+        toast.error("Odeme alinamadi");
+        setPayingBill(false);
+        return;
+      }
+      const data = await res.json();
+      const newPaid = [...splitPaid, { index, method, amount }];
+      setSplitPaid(newPaid);
+
+      if (newPaid.length >= splitCount || (data.remaining ?? 0) <= 0) {
+        toast.success(`Siparis #${orderId} tamamen odendi`);
+        setBillDetail(null);
+        setShowBills(false);
+        setSplitMode(false);
+        setSplitPaid([]);
+        load();
+      } else {
+        toast.success(`Kisi ${index + 1} odedi: ${amount.toFixed(0)} TL (${method === "cash" ? "Nakit" : "Kart"})`);
+      }
     } catch {
       toast.error("Odeme islemi sirasinda bir hata olustu");
     }
@@ -925,7 +983,7 @@ export default function PosPage() {
                   {billDetail.tableNumber ? `Masa ${billDetail.tableNumber}` : billDetail.customerName || ""}
                 </p>
               </div>
-              <button onClick={() => setBillDetail(null)} className="text-white/30 hover:text-white">
+              <button onClick={() => { setBillDetail(null); setSplitMode(false); setSplitPaid([]); }} className="text-white/30 hover:text-white">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -972,22 +1030,117 @@ export default function PosPage() {
             </div>
 
             <div className="p-4 border-t border-neutral-800/60 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => collectPayment(billDetail.id, "cash")}
-                  disabled={payingBill}
-                  className="py-4 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-base transition-all active:scale-[0.97] disabled:opacity-40"
-                >
-                  Nakit
-                </button>
-                <button
-                  onClick={() => collectPayment(billDetail.id, "card")}
-                  disabled={payingBill}
-                  className="py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-base transition-all active:scale-[0.97] disabled:opacity-40"
-                >
-                  Kart
-                </button>
-              </div>
+              {!splitMode ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => collectPayment(billDetail.id, "cash")}
+                      disabled={payingBill}
+                      className="py-4 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-base transition-all active:scale-[0.97] disabled:opacity-40"
+                    >
+                      Nakit
+                    </button>
+                    <button
+                      onClick={() => collectPayment(billDetail.id, "card")}
+                      disabled={payingBill}
+                      className="py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-base transition-all active:scale-[0.97] disabled:opacity-40"
+                    >
+                      Kart
+                    </button>
+                  </div>
+                  <button
+                    onClick={startSplitPayment}
+                    className="w-full py-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 font-bold text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    Ayri Ayri Ode
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-purple-300 font-bold text-sm">Kisi Sayisi</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => { setSplitCount(Math.max(2, splitCount - 1)); setSplitPaid([]); }}
+                          disabled={splitPaid.length > 0}
+                          className="w-8 h-8 rounded-lg bg-neutral-800 text-white/80 font-bold flex items-center justify-center text-sm disabled:opacity-30"
+                        >
+                          −
+                        </button>
+                        <span className="text-white font-extrabold text-lg min-w-[24px] text-center">{splitCount}</span>
+                        <button
+                          onClick={() => { setSplitCount(splitCount + 1); setSplitPaid([]); }}
+                          disabled={splitPaid.length > 0}
+                          className="w-8 h-8 rounded-lg bg-purple-500 text-white font-bold flex items-center justify-center text-sm disabled:opacity-30"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-center text-white/40 text-xs mb-2">
+                      Kisi basi: <span className="text-amber-400 font-bold">{getSplitAmounts(billDetail.total, splitCount)[0].toFixed(0)} TL</span>
+                      {getSplitAmounts(billDetail.total, splitCount)[splitCount - 1] !== getSplitAmounts(billDetail.total, splitCount)[0] && (
+                        <span className="text-white/30"> (son kisi: {getSplitAmounts(billDetail.total, splitCount)[splitCount - 1].toFixed(0)} TL)</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                    {getSplitAmounts(billDetail.total, splitCount).map((amount, i) => {
+                      const paid = splitPaid.find((p) => p.index === i);
+                      return (
+                        <div key={i} className={`rounded-xl p-2.5 ${paid ? "bg-green-500/10 border border-green-500/30" : "bg-neutral-800/60 border border-neutral-700/30"}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${paid ? "bg-green-500 text-white" : "bg-neutral-700 text-white/60"}`}>
+                                {paid ? "✓" : i + 1}
+                              </span>
+                              <span className={`text-sm font-medium ${paid ? "text-green-400" : "text-white/80"}`}>
+                                Kisi {i + 1}
+                              </span>
+                              <span className={`text-sm font-bold ${paid ? "text-green-400/60" : "text-amber-400"}`}>
+                                {amount.toFixed(0)} TL
+                              </span>
+                            </div>
+                            {paid ? (
+                              <span className="text-green-400 text-xs font-bold px-2 py-1 bg-green-500/20 rounded-lg">
+                                {paid.method === "cash" ? "Nakit" : "Kart"} ✓
+                              </span>
+                            ) : (
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={() => collectSplitPayment(billDetail.id, i, "cash")}
+                                  disabled={payingBill}
+                                  className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-xs transition-all active:scale-[0.95] disabled:opacity-40"
+                                >
+                                  Nakit
+                                </button>
+                                <button
+                                  onClick={() => collectSplitPayment(billDetail.id, i, "card")}
+                                  disabled={payingBill}
+                                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all active:scale-[0.95] disabled:opacity-40"
+                                >
+                                  Kart
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={closeSplitMode}
+                    disabled={splitPaid.length > 0 && splitPaid.length < splitCount}
+                    className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/40 font-medium text-sm transition-all active:scale-[0.97] disabled:opacity-30"
+                  >
+                    {splitPaid.length > 0 && splitPaid.length < splitCount ? `${splitCount - splitPaid.length} kisi kaldi` : "Iptal"}
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => printReceipt(billDetail.id)}
                 className="w-full py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/60 font-medium text-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"

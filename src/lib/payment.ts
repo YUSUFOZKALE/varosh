@@ -8,12 +8,15 @@ interface PaymentOptions {
   receivedAmount?: number;
   staffId?: number;
   isCourierDelivery?: boolean;
+  splitPayment?: boolean;
 }
 
 interface PaymentResult {
   ok: boolean;
   error?: string;
   status?: number;
+  totalPaid?: number;
+  remaining?: number;
 }
 
 export function recordPayment(opts: PaymentOptions): PaymentResult {
@@ -37,6 +40,8 @@ export function recordPayment(opts: PaymentOptions): PaymentResult {
   const receivedAmount = opts.receivedAmount ?? amount;
   const changeGiven = opts.method === "cash" ? Math.max(0, receivedAmount - amount) : 0;
 
+  let totalPaidAfter = 0;
+
   const txn = sqlite.transaction(() => {
     db.insert(schema.payments)
       .values({
@@ -56,33 +61,46 @@ export function recordPayment(opts: PaymentOptions): PaymentResult {
           amount,
           orderId: opts.orderId,
           staffId: opts.staffId || null,
-          description: `Siparis #${opts.orderId} - ${opts.method}`,
+          description: `Siparis #${opts.orderId} - ${opts.method}${opts.splitPayment ? " (ayri odeme)" : ""}`,
         })
         .run();
     }
 
-    if (amount < order.total) {
+    const allPayments = db.select({ amount: schema.payments.amount })
+      .from(schema.payments)
+      .where(eq(schema.payments.orderId, opts.orderId))
+      .all();
+    totalPaidAfter = allPayments.reduce((s, p) => s + p.amount, 0);
+
+    const isFullyPaid = totalPaidAfter >= order.total;
+
+    if (isFullyPaid) {
+      if (totalPaidAfter < order.total + 0.01 && !opts.splitPayment) {
+        const diff = order.total - totalPaidAfter;
+        if (diff > 0) {
+          db.update(schema.orders)
+            .set({ discountAmount: diff })
+            .where(eq(schema.orders.id, opts.orderId))
+            .run();
+        }
+      }
+
       db.update(schema.orders)
-        .set({ discountAmount: order.total - amount })
+        .set({
+          paymentMethod: opts.splitPayment ? "cash" : opts.method,
+          paymentConfirmedAt: sql`(datetime('now','localtime'))`,
+        })
         .where(eq(schema.orders.id, opts.orderId))
         .run();
-    }
 
-    db.update(schema.orders)
-      .set({
-        paymentMethod: opts.method,
-        paymentConfirmedAt: sql`(datetime('now','localtime'))`,
-      })
-      .where(eq(schema.orders.id, opts.orderId))
-      .run();
-
-    if (order.tableNumber) {
-      closeTableSessionIfAllPaid(order.tableNumber, opts.orderId);
+      if (order.tableNumber) {
+        closeTableSessionIfAllPaid(order.tableNumber, opts.orderId);
+      }
     }
   });
 
   txn();
-  return { ok: true };
+  return { ok: true, totalPaid: totalPaidAfter, remaining: Math.max(0, order.total - totalPaidAfter) };
 }
 
 function closeTableSessionIfAllPaid(tableNumber: number, justPaidOrderId: number) {

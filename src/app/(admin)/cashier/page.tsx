@@ -50,6 +50,7 @@ interface OrderItemDetail {
 
 interface SessionOrder extends Order {
   items: OrderItemDetail[];
+  paidAmount: number;
 }
 
 interface TableSessionData {
@@ -93,6 +94,7 @@ interface ZReport {
 
 interface MenuCat { id: number; name: string }
 interface MenuItemRaw { id: number; name: string; price: number; categoryId: number; imageUrl: string | null }
+interface MenuOptionRaw { id: number; menuItemId: number; groupName: string; optionName: string; priceModifier: number; isDefault: boolean }
 
 type Tab = "orders" | "expenses" | "register" | "zreport";
 
@@ -149,7 +151,24 @@ export default function CashierPage() {
   const [addItemTable, setAddItemTable] = useState<number | null>(null);
   const [menuCats, setMenuCats] = useState<MenuCat[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemRaw[]>([]);
-  const [addCart, setAddCart] = useState<{ menuItemId: number; name: string; price: number; qty: number }[]>([]);
+  const [addCart, setAddCart] = useState<{ menuItemId: number; name: string; price: number; qty: number; notes: string; selectedOptions: number[]; removedIngredients: string[] }[]>([]);
+  const [menuOptionsAll, setMenuOptionsAll] = useState<MenuOptionRaw[]>([]);
+  const [addEditItem, setAddEditItem] = useState<MenuItemRaw | null>(null);
+  const [addItemNotes, setAddItemNotes] = useState("");
+  const [addItemOpts, setAddItemOpts] = useState<number[]>([]);
+  const [addItemQty, setAddItemQty] = useState(1);
+
+  // Split payment mode
+  const [splitPayMode, setSplitPayMode] = useState(false);
+
+  // Split bill mode (hesabi bolme - urun secimli)
+  const [splitBillMode, setSplitBillMode] = useState(false);
+  const [splitSelectedItems, setSplitSelectedItems] = useState<Set<number>>(new Set());
+  const [splitCustomAmount, setSplitCustomAmount] = useState("");
+
+
+  // Transfer & table actions
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
 
   // Existing tabs state
   const [register, setRegister] = useState<{ movements: CashRegisterEntry[]; balance: number }>({ movements: [], balance: 0 });
@@ -234,22 +253,27 @@ export default function CashierPage() {
   function openTableDetail(ts: TableSessionData) {
     setSelectedTable(ts);
     setPayingSingleOrder(null);
-    const unpaidTotal = ts.orders.filter((o) => !o.paymentMethod).reduce((s, o) => s + o.total, 0);
-    setChargedAmount(unpaidTotal.toFixed(0));
+    setSplitPayMode(false);
+    setSplitBillMode(false);
+    setSplitSelectedItems(new Set());
+    const totalPaid = ts.orders.reduce((s, o) => s + (o.paidAmount || 0), 0);
+    const remaining = Math.max(0, ts.session.total - totalPaid);
+    setChargedAmount(remaining.toFixed(0));
     setPayMethod("cash");
     setReceivedCash("");
   }
 
   async function refreshTableDetail(tableNumber: number) {
     try {
-      await loadSessions();
       const sessRes = await fetch("/api/tables/sessions/open");
       const sessData = await sessRes.json();
-      const found = (sessData.sessions || []).find((s: TableSessionData) => s.session.tableNumber === tableNumber);
+      const allSessions: TableSessionData[] = sessData.sessions || [];
+      setTableSessions(allSessions);
+      const found = allSessions.find((s) => s.session.tableNumber === tableNumber);
       if (found) {
         setSelectedTable(found);
-        const unpaidTotal = found.orders.filter((o: SessionOrder) => !o.paymentMethod).reduce((s: number, o: SessionOrder) => s + o.total, 0);
-        setChargedAmount(unpaidTotal.toFixed(0));
+        const totalPaid = found.orders.reduce((s: number, o: SessionOrder) => s + (o.paidAmount || 0), 0);
+        setChargedAmount((found.session.total - totalPaid).toFixed(0));
       } else {
         setSelectedTable(null);
       }
@@ -287,18 +311,22 @@ export default function CashierPage() {
   // Pay ALL unpaid orders on this table
   async function payTable() {
     if (!selectedTable) return;
-    const unpaidOrders = selectedTable.orders.filter((o) => !o.paymentMethod);
+    const unpaidOrders = selectedTable.orders.filter((o) => !o.paymentMethod && o.status !== "cancelled");
     if (unpaidOrders.length === 0) return;
 
     const charged = parseFloat(chargedAmount) || 0;
+    if (charged <= 0) return;
     const received = parseFloat(receivedCash) || charged;
 
     try {
       let remaining = charged;
       for (let i = 0; i < unpaidOrders.length; i++) {
+        if (remaining <= 0) break;
         const o = unpaidOrders[i];
+        const orderRemaining = o.total - (o.paidAmount || 0);
+        if (orderRemaining <= 0) continue;
         const isLast = i === unpaidOrders.length - 1;
-        const amt = isLast ? remaining : Math.min(o.total, remaining);
+        const amt = isLast ? remaining : Math.min(orderRemaining, remaining);
         const res = await fetch("/api/payments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -323,14 +351,16 @@ export default function CashierPage() {
   // Pay a SINGLE order within table
   function openSingleOrderPay(order: SessionOrder) {
     setPayingSingleOrder(order);
-    setSingleChargedAmount(order.total.toFixed(0));
+    const remaining = order.total - (order.paidAmount || 0);
+    setSingleChargedAmount(remaining.toFixed(0));
     setSinglePayMethod("cash");
     setSingleReceivedCash("");
   }
 
   async function paySingleOrder() {
     if (!payingSingleOrder || !selectedTable) return;
-    const charged = parseFloat(singleChargedAmount) || payingSingleOrder.total;
+    const orderRemaining = payingSingleOrder.total - (payingSingleOrder.paidAmount || 0);
+    const charged = parseFloat(singleChargedAmount) || orderRemaining;
     const received = parseFloat(singleReceivedCash) || charged;
 
     try {
@@ -357,20 +387,122 @@ export default function CashierPage() {
 
   async function quickApproveSingleOrder(order: SessionOrder) {
     if (!selectedTable) return;
+    const remaining = order.total - (order.paidAmount || 0);
+    if (remaining <= 0) return;
     try {
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: order.id,
-          amount: order.total,
+          amount: remaining,
           method: "cash",
-          receivedAmount: order.total,
+          receivedAmount: remaining,
         }),
       });
       if (!res.ok) { toast.error("Islem basarisiz"); return; }
       toast.success("Odeme alindi");
       refreshTableDetail(selectedTable.session.tableNumber);
+      loadRegister();
+      loadZReport();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
+  }
+
+  // ── Split bill (hesabi bol) ──
+  function startSplitBill() {
+    setSplitBillMode(true);
+    setSplitPayMode(false);
+    setPayingSingleOrder(null);
+    setSplitSelectedItems(new Set());
+    setSplitCustomAmount("");
+  }
+
+  function toggleSplitItem(itemId: number) {
+    setSplitSelectedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+  }
+
+  function selectAllOrderItems(order: SessionOrder) {
+    setSplitSelectedItems((prev) => {
+      const next = new Set(prev);
+      const orderItemIds = order.items.map((it) => it.id);
+      const allSelected = orderItemIds.every((id) => prev.has(id));
+      for (const id of orderItemIds) {
+        if (allSelected) next.delete(id); else next.add(id);
+      }
+      return next;
+    });
+  }
+
+  async function paySelectedItems(method: "cash" | "card") {
+    if (!selectedTable || splitSelectedItems.size === 0) return;
+
+    const amountByOrder: Record<number, number> = {};
+    for (const order of selectedTable.orders) {
+      if (order.paymentMethod || order.status === "cancelled") continue;
+      for (const item of order.items) {
+        if (splitSelectedItems.has(item.id)) {
+          amountByOrder[order.id] = (amountByOrder[order.id] || 0) + item.totalPrice;
+        }
+      }
+    }
+
+    try {
+      for (const [oid, amt] of Object.entries(amountByOrder)) {
+        const orderId = parseInt(oid);
+        const res = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, amount: amt, method, splitPayment: true }),
+        });
+        if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      }
+      const total = Object.values(amountByOrder).reduce((s, a) => s + a, 0);
+      setSplitSelectedItems(new Set());
+      toast.success(`${total.toFixed(0)} TL tahsil edildi`);
+      await refreshTableDetail(selectedTable.session.tableNumber);
+      loadRegister();
+      loadZReport();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
+  }
+
+  async function paySplitCustom(method: "cash" | "card") {
+    if (!selectedTable) return;
+    const amount = parseFloat(splitCustomAmount);
+    if (!amount || amount <= 0) { toast.error("Gecerli bir tutar girin"); return; }
+
+    const unpaidOrders = selectedTable.orders.filter((o) => !o.paymentMethod && o.status !== "cancelled");
+    if (unpaidOrders.length === 0) return;
+
+    try {
+      let remaining = amount;
+
+      for (const order of unpaidOrders) {
+        if (remaining <= 0) break;
+        const alreadyPaid = order.paidAmount || 0;
+        const orderRemaining = order.total - alreadyPaid;
+        if (orderRemaining <= 0) continue;
+
+        const payAmount = Math.min(remaining, orderRemaining);
+        const res = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: order.id, amount: payAmount, method, splitPayment: true }),
+        });
+        if (!res.ok) { toast.error("Islem basarisiz"); return; }
+        remaining -= payAmount;
+      }
+
+      setSplitCustomAmount("");
+      toast.success(`${amount.toFixed(0)} TL tahsil edildi`);
+      await refreshTableDetail(selectedTable.session.tableNumber);
       loadRegister();
       loadZReport();
     } catch {
@@ -435,24 +567,63 @@ export default function CashierPage() {
   async function openAddItem(tableNumber: number) {
     setAddItemTable(tableNumber);
     setAddCart([]);
+    setAddEditItem(null);
     if (menuCats.length === 0) {
       try {
-        const [cRes, iRes] = await Promise.all([fetch("/api/menu/categories"), fetch("/api/menu/items")]);
+        const [cRes, iRes, oRes] = await Promise.all([fetch("/api/menu/categories"), fetch("/api/menu/items"), fetch("/api/menu/options")]);
         if (!cRes.ok || !iRes.ok) { toast.error("Islem basarisiz"); return; }
         setMenuCats(await cRes.json());
         setMenuItems(await iRes.json());
+        if (oRes.ok) setMenuOptionsAll(await oRes.json());
       } catch {
         toast.error("Baglanti hatasi");
       }
     }
   }
 
-  function addToTempCart(item: MenuItemRaw) {
+  function handleAddItemTap(item: MenuItemRaw) {
+    const hasOptions = menuOptionsAll.some((o) => o.menuItemId === item.id);
+    if (hasOptions) {
+      if (addEditItem?.id === item.id) { setAddEditItem(null); return; }
+      setAddEditItem(item);
+      setAddItemNotes("");
+      setAddItemOpts([]);
+      setAddItemQty(1);
+    } else {
+      setAddCart((prev) => {
+        const existing = prev.find((c) => c.menuItemId === item.id && !c.notes && c.selectedOptions.length === 0);
+        if (existing) return prev.map((c) => c === existing ? { ...c, qty: c.qty + 1 } : c);
+        return [...prev, { menuItemId: item.id, name: item.name, price: item.price, qty: 1, notes: "", selectedOptions: [], removedIngredients: [] }];
+      });
+    }
+  }
+
+  function confirmAddItem() {
+    if (!addEditItem) return;
+    const optCost = addItemOpts.reduce((s, optId) => {
+      const opt = menuOptionsAll.find((o) => o.id === optId);
+      return s + (opt?.priceModifier || 0);
+    }, 0);
+    const key = `${addEditItem.id}-${addItemNotes}-${JSON.stringify([...addItemOpts].sort())}`;
     setAddCart((prev) => {
-      const existing = prev.find((c) => c.menuItemId === item.id);
-      if (existing) return prev.map((c) => c.menuItemId === item.id ? { ...c, qty: c.qty + 1 } : c);
-      return [...prev, { menuItemId: item.id, name: item.name, price: item.price, qty: 1 }];
+      const existing = prev.find((c) =>
+        `${c.menuItemId}-${c.notes}-${JSON.stringify([...c.selectedOptions].sort())}` === key
+      );
+      if (existing) return prev.map((c) => c === existing ? { ...c, qty: c.qty + addItemQty } : c);
+      return [...prev, {
+        menuItemId: addEditItem.id,
+        name: addEditItem.name,
+        price: addEditItem.price + optCost,
+        qty: addItemQty,
+        notes: addItemNotes,
+        selectedOptions: [...addItemOpts],
+        removedIngredients: [],
+      }];
     });
+    setAddEditItem(null);
+    setAddItemNotes("");
+    setAddItemOpts([]);
+    setAddItemQty(1);
   }
 
   async function submitAddItems() {
@@ -464,17 +635,88 @@ export default function CashierPage() {
         body: JSON.stringify({
           source: "manual",
           tableNumber: addItemTable,
-          items: addCart.map((c) => ({ menuItemId: c.menuItemId, quantity: c.qty })),
+          items: addCart.map((c) => ({
+            menuItemId: c.menuItemId,
+            quantity: c.qty,
+            notes: c.notes || undefined,
+            selectedOptions: c.selectedOptions.length > 0 ? c.selectedOptions : undefined,
+            removedIngredients: c.removedIngredients.length > 0 ? c.removedIngredients : undefined,
+          })),
         }),
       });
       if (!res.ok) { toast.error("Islem basarisiz"); return; }
       const tbl = addItemTable;
       setAddItemTable(null);
       setAddCart([]);
+      setAddEditItem(null);
       if (selectedTable && selectedTable.session.tableNumber === tbl) {
-        refreshTableDetail(tbl);
+        await refreshTableDetail(tbl);
+      } else {
+        await loadSessions();
       }
-      loadSessions();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
+  }
+
+  // ── Table actions ──
+  async function cancelOrder(orderId: number) {
+    try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", cancelReason: "Kasadan iptal" }),
+      });
+      if (!res.ok) { toast.error("Iptal basarisiz"); return; }
+      toast.success("Siparis iptal edildi");
+      if (selectedTable) refreshTableDetail(selectedTable.session.tableNumber);
+      loadAll();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
+  }
+
+  async function transferTable(toTable: number) {
+    if (!selectedTable) return;
+    try {
+      const res = await fetch("/api/tables/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromTable: selectedTable.session.tableNumber, toTable }),
+      });
+      if (!res.ok) { toast.error("Tasima basarisiz"); return; }
+      toast.success(`Masa ${toTable}'ye tasindi`);
+      setTransferModalOpen(false);
+      setSelectedTable(null);
+      loadAll();
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
+  }
+
+  async function closeSession() {
+    if (!selectedTable || selectedTable.session.id === -1) return;
+    try {
+      const unpaidOrders = selectedTable.orders.filter((o) => !o.paymentMethod && o.status !== "cancelled");
+      for (const o of unpaidOrders) {
+        const orderRemaining = o.total - (o.paidAmount || 0);
+        if (orderRemaining > 0) {
+          await fetch("/api/payments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: o.id, amount: orderRemaining, method: "cash" }),
+          });
+        }
+      }
+      const res = await fetch("/api/tables/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableNumber: selectedTable.session.tableNumber, action: "close" }),
+      });
+      if (!res.ok) { toast.error("Islem basarisiz"); return; }
+      toast.success("Masa kapatildi");
+      setSelectedTable(null);
+      loadAll();
     } catch {
       toast.error("Baglanti hatasi");
     }
@@ -580,8 +822,9 @@ export default function CashierPage() {
   const totalBadge = tableSessions.length + packageOrders.length;
 
   // Hesap vs tahsil summary for table
-  const tableUnpaidTotal = selectedTable ? selectedTable.orders.filter((o) => !o.paymentMethod).reduce((s, o) => s + o.total, 0) : 0;
-  const tablePaidTotal = selectedTable ? selectedTable.orders.filter((o) => o.paymentMethod).reduce((s, o) => s + o.total, 0) : 0;
+  const tableTotalPaid = selectedTable ? selectedTable.orders.reduce((s, o) => s + (o.paidAmount || 0), 0) : 0;
+  const tableUnpaidTotal = selectedTable ? Math.max(0, selectedTable.session.total - tableTotalPaid) : 0;
+  const tablePaidTotal = tableTotalPaid;
 
   return (
     <div>
@@ -599,18 +842,18 @@ export default function CashierPage() {
 
       {/* ══════════ SIPARISLER TAB - GRID VIEW ══════════ */}
       {tab === "orders" && (
-        <div className="space-y-6">
-          {/* MASALAR GRID */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
+          {/* MASALAR */}
+          <div className="lg:col-span-1">
+            <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
               Masalar
               {tableSessions.length > 0 && <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full">{tableSessions.length} acik</span>}
             </h3>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2">
               {allTables.filter((t) => t.isActive).map((table) => {
                 const session = tableSessions.find((ts) => ts.session.tableNumber === table.number);
-                const unpaidTotal = session ? session.orders.filter((o) => !o.paymentMethod).reduce((s, o) => s + o.total, 0) : 0;
-                const paidTotal = session ? session.orders.filter((o) => o.paymentMethod).reduce((s, o) => s + o.total, 0) : 0;
+                const sessionTotalPaid = session ? session.orders.reduce((s, o) => s + (o.paidAmount || 0), 0) : 0;
+                const unpaidTotal = session ? Math.max(0, session.session.total - sessionTotalPaid) : 0;
                 const hasSession = !!session;
                 const hasUnpaid = unpaidTotal > 0;
                 const elapsed = session ? Math.floor((Date.now() - new Date(session.session.openedAt).getTime()) / 60000) : 0;
@@ -618,45 +861,64 @@ export default function CashierPage() {
                 return (
                   <div
                     key={table.id}
-                    onClick={() => session && openTableDetail(session)}
+                    onClick={() => {
+                      if (session) {
+                        openTableDetail(session);
+                      } else {
+                        setSelectedTable({
+                          session: { id: -1, tableNumber: table.number, status: "open", openedAt: new Date().toISOString(), total: 0 },
+                          unpaidCount: 0,
+                          orders: [],
+                        });
+                        setChargedAmount("0");
+                        setPayMethod("cash");
+                        setReceivedCash("");
+                      }
+                    }}
                     className={`relative aspect-square rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-[0.96] ${
                       hasUnpaid
                         ? "bg-amber-500/10 border-amber-500/50 hover:border-amber-400 shadow-lg shadow-amber-500/10"
                         : hasSession
                         ? "bg-green-500/10 border-green-500/40 hover:border-green-400"
-                        : "bg-surface-1 border-border hover:border-white/20"
+                        : "bg-surface-1 border-border hover:border-white/30 hover:bg-surface-2"
                     }`}
                   >
-                    <span className={`text-2xl sm:text-3xl font-extrabold ${
+                    <span className={`text-xl sm:text-2xl font-extrabold ${
                       hasUnpaid ? "text-amber-400" : hasSession ? "text-green-400" : "text-white/20"
                     }`}>
                       {table.number}
                     </span>
 
                     {hasUnpaid && (
-                      <span className="text-amber-300 font-bold text-xs sm:text-sm mt-1">
+                      <span className="text-amber-300 font-bold text-[10px] sm:text-xs mt-0.5">
                         {unpaidTotal.toFixed(0)} TL
                       </span>
                     )}
 
+                    {hasUnpaid && sessionTotalPaid > 0 && (
+                      <span className="text-green-400/70 font-medium text-[8px] sm:text-[9px]">
+                        {sessionTotalPaid.toFixed(0)} odendi
+                      </span>
+                    )}
+
                     {hasSession && !hasUnpaid && (
-                      <span className="text-green-400/70 font-medium text-[10px] sm:text-xs mt-1">
+                      <span className="text-green-400/70 font-medium text-[9px] sm:text-[10px] mt-0.5">
                         Odendi
                       </span>
                     )}
 
                     {!hasSession && (
-                      <span className="text-white/10 text-[10px] mt-1">Bos</span>
+                      <span className="text-white/10 text-[9px] mt-0.5">Bos</span>
                     )}
 
                     {hasSession && (
-                      <span className="absolute top-1 right-1.5 text-[9px] text-white/30">
+                      <span className="absolute top-0.5 right-1 text-[8px] text-white/30">
                         {elapsed}dk
                       </span>
                     )}
 
                     {session && session.unpaidCount > 1 && (
-                      <span className="absolute top-1 left-1.5 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                      <span className="absolute top-0.5 left-1 bg-red-500 text-white text-[7px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
                         {session.unpaidCount}
                       </span>
                     )}
@@ -665,90 +927,88 @@ export default function CashierPage() {
               })}
               {allTables.filter((t) => t.isActive).length === 0 && (
                 <div className="col-span-full text-center py-8 text-white/20 text-sm">
-                  Masa yok — Ayarlar bölümünden masa ekleyin
+                  Masa yok — Ayarlardan ekleyin
                 </div>
               )}
             </div>
           </div>
 
-          {/* PAKETLER + KURYE */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                Paketler & Gel-Al
-                {packageOrders.length > 0 && <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-0.5 rounded-full">{packageOrders.length}</span>}
-              </h3>
-              <div className="space-y-3">
-                {packageOrders.map((order) => (
-                  <div key={order.id} className="card">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <span className="font-bold">#{order.id}</span>
-                        <span className="ml-2 text-xs text-white/40">{SOURCE_LABELS[order.source] || order.source}</span>
-                      </div>
-                      <span className="text-xl font-bold text-accent">{order.total.toFixed(0)} TL</span>
+          {/* PAKETLER & GEL-AL */}
+          <div className="lg:col-span-1">
+            <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+              Paket & Gel-Al
+              {packageOrders.length > 0 && <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-0.5 rounded-full">{packageOrders.length}</span>}
+            </h3>
+            <div className="space-y-3 max-h-[calc(100vh-200px)] lg:overflow-y-auto lg:pr-1">
+              {packageOrders.map((order) => (
+                <div key={order.id} className="card">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <span className="font-bold text-sm">#{order.id}</span>
+                      <span className="ml-2 text-xs text-white/40">{SOURCE_LABELS[order.source] || order.source}</span>
                     </div>
-                    <div className="text-sm text-white/40 mb-2">
-                      {order.customerName && <p>{order.customerName}</p>}
-                      {order.deliveryAddress && <p className="text-xs truncate">{order.deliveryAddress}</p>}
-                    </div>
-                    {order.items && order.items.length > 0 && (
-                      <div className="space-y-0.5 mb-3 bg-neutral-800/30 rounded-lg p-2">
-                        {order.items.map((item, i) => (
-                          <div key={i} className="flex justify-between text-xs">
-                            <div className="flex-1 min-w-0">
-                              <span className="text-white/50 font-bold">{item.quantity}x</span>
-                              <span className="text-white/70 ml-1">{item.name}</span>
-                              {item.extras.length > 0 && <span className="text-amber-400/50 ml-1">+{item.extras.map((e) => e.name).join(", ")}</span>}
-                              {item.removed.length > 0 && <span className="text-red-400/50 ml-1">-{item.removed.join(", ")}</span>}
-                            </div>
-                            <span className="text-white/40 shrink-0 ml-2">{item.totalPrice.toFixed(0)} TL</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <button onClick={() => quickApprovePackage(order)} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm transition-all active:scale-[0.97]">
-                        Onayla {order.total.toFixed(0)} TL
-                      </button>
-                      <button onClick={() => openPayPackage(order)} className="px-4 py-2.5 rounded-xl bg-surface-2 hover:bg-neutral-700 text-white/60 font-medium text-sm transition-all">
-                        Duzenle
-                      </button>
-                    </div>
+                    <span className="text-lg font-bold text-accent">{order.total.toFixed(0)} TL</span>
                   </div>
-                ))}
-                {packageOrders.length === 0 && <div className="text-center py-8 text-white/20 text-sm">Odenmemis paket yok</div>}
-              </div>
+                  <div className="text-sm text-white/40 mb-2">
+                    {order.customerName && <p className="text-xs">{order.customerName}</p>}
+                    {order.deliveryAddress && <p className="text-[10px] truncate">{order.deliveryAddress}</p>}
+                  </div>
+                  {order.items && order.items.length > 0 && (
+                    <div className="space-y-0.5 mb-3 bg-neutral-800/30 rounded-lg p-2">
+                      {order.items.map((item, i) => (
+                        <div key={i} className="flex justify-between text-xs">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-white/50 font-bold">{item.quantity}x</span>
+                            <span className="text-white/70 ml-1">{item.name}</span>
+                            {item.extras.length > 0 && <span className="text-amber-400/50 ml-1">+{item.extras.map((e) => e.name).join(", ")}</span>}
+                            {item.removed.length > 0 && <span className="text-red-400/50 ml-1">-{item.removed.join(", ")}</span>}
+                          </div>
+                          <span className="text-white/40 shrink-0 ml-2">{item.totalPrice.toFixed(0)} TL</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => quickApprovePackage(order)} className="flex-1 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.97]">
+                      Onayla {order.total.toFixed(0)} TL
+                    </button>
+                    <button onClick={() => openPayPackage(order)} className="px-3 py-2 rounded-xl bg-surface-2 hover:bg-neutral-700 text-white/60 font-medium text-xs sm:text-sm transition-all">
+                      Duzenle
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {packageOrders.length === 0 && <div className="text-center py-8 text-white/20 text-sm">Odenmemis paket yok</div>}
             </div>
+          </div>
 
-            {/* KURYE HESABI */}
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  Kurye Hesabi
-                  {courierGroups.length > 0 && <span className="bg-orange-500/20 text-orange-400 text-xs px-2 py-0.5 rounded-full">{courierGroups.reduce((s, g) => s + g.orders.length, 0)}</span>}
-                </h3>
-                <button onClick={() => setCourierAdvanceModal(true)} className="px-3 py-1.5 bg-orange-600/20 text-orange-400 rounded-lg text-xs font-medium hover:bg-orange-600/30 self-start sm:self-auto">
-                  Kuryeye Nakit Ver
-                </button>
-              </div>
-
+          {/* KURYE HESABI */}
+          <div className="lg:col-span-1">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-base font-semibold flex items-center gap-2">
+                Kurye
+                {courierGroups.length > 0 && <span className="bg-orange-500/20 text-orange-400 text-xs px-2 py-0.5 rounded-full">{courierGroups.reduce((s, g) => s + g.orders.length, 0)}</span>}
+              </h3>
+              <button onClick={() => setCourierAdvanceModal(true)} className="px-2 py-1 bg-orange-600/20 text-orange-400 rounded-lg text-[10px] font-medium hover:bg-orange-600/30">
+                Nakit Ver
+              </button>
+            </div>
+            <div className="space-y-3 max-h-[calc(100vh-200px)] lg:overflow-y-auto lg:pr-1">
               {courierGroups.map((group) => {
                 const allSelected = group.orders.every((o) => selectedCourierOrders.has(o.id));
                 const selectedTotal = group.orders.filter((o) => selectedCourierOrders.has(o.id)).reduce((s, o) => s + o.paidAmount, 0);
                 return (
-                  <div key={group.courierId} className="card mb-3">
+                  <div key={group.courierId} className="card">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <div className="bg-orange-500/20 text-orange-400 font-bold text-sm w-8 h-8 rounded-lg flex items-center justify-center">K</div>
+                        <div className="bg-orange-500/20 text-orange-400 font-bold text-xs w-7 h-7 rounded-lg flex items-center justify-center">K</div>
                         <div>
                           <p className="font-semibold text-white text-sm">{group.courierName}</p>
-                          <p className="text-white/30 text-xs">{group.orders.length} teslimat</p>
+                          <p className="text-white/30 text-[10px]">{group.orders.length} teslimat</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-orange-400 font-extrabold text-lg">{group.total.toFixed(0)} TL</p>
+                        <p className="text-orange-400 font-extrabold text-base">{group.total.toFixed(0)} TL</p>
                         <button onClick={() => selectAllCourierOrders(group)} className="text-white/30 text-[10px] hover:text-white/60">
                           {allSelected ? "Secimi kaldir" : "Tumunu sec"}
                         </button>
@@ -761,23 +1021,23 @@ export default function CashierPage() {
                           <input type="checkbox" checked={selectedCourierOrders.has(o.id)} onChange={() => toggleCourierOrder(o.id)} className="accent-orange-500" />
                           <div className="flex-1 min-w-0">
                             <span className="text-white/50 text-xs font-bold">#{o.id}</span>
-                            {o.customerName && <span className="text-white/40 text-xs ml-1">{o.customerName}</span>}
+                            {o.customerName && <span className="text-white/40 text-[10px] ml-1">{o.customerName}</span>}
                             <span className={`ml-1 text-[10px] px-1 py-0.5 rounded ${o.payMethod === "cash" ? "bg-green-600/20 text-green-400" : "bg-blue-600/20 text-blue-400"}`}>
                               {o.payMethod === "cash" ? "Nakit" : "Kart"}
                             </span>
                           </div>
-                          <span className="text-white/60 text-sm font-semibold">{o.paidAmount.toFixed(0)} TL</span>
+                          <span className="text-white/60 text-xs font-semibold">{o.paidAmount.toFixed(0)} TL</span>
                         </label>
                       ))}
                     </div>
 
                     {selectedTotal > 0 && (
-                      <div className="grid grid-cols-2 gap-1.5 sm:gap-2 mt-3">
-                        <button onClick={() => collectCourierCash("cash")} className="py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.97]">
-                          Nakit Tahsil {selectedTotal.toFixed(0)} TL
+                      <div className="grid grid-cols-2 gap-1.5 mt-3">
+                        <button onClick={() => collectCourierCash("cash")} className="py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-[10px] sm:text-xs transition-all active:scale-[0.97]">
+                          Nakit {selectedTotal.toFixed(0)} TL
                         </button>
-                        <button onClick={() => collectCourierCash("card")} className="py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.97]">
-                          Kart Tahsil {selectedTotal.toFixed(0)} TL
+                        <button onClick={() => collectCourierCash("card")} className="py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] sm:text-xs transition-all active:scale-[0.97]">
+                          Kart {selectedTotal.toFixed(0)} TL
                         </button>
                       </div>
                     )}
@@ -788,176 +1048,368 @@ export default function CashierPage() {
             </div>
           </div>
         </div>
-        </div>
       )}
 
       {/* ══════════ TABLE DETAIL MODAL ══════════ */}
       {selectedTable && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setSelectedTable(null)}>
-          <div className="bg-neutral-900 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 sm:p-5 border-b border-neutral-800/60 flex items-center justify-between shrink-0 gap-2">
-              <div className="min-w-0">
-                <h3 className="text-base sm:text-lg font-bold text-white">Masa {selectedTable.session.tableNumber} Hesabi</h3>
-                <p className="text-white/30 text-xs">{selectedTable.orders.length} siparis &middot; {new Date(selectedTable.session.openedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} dan beri</p>
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <button onClick={() => openAddItem(selectedTable.session.tableNumber)} className="px-2 sm:px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg text-xs font-medium hover:bg-green-600/30">+ Urun Ekle</button>
-                <button onClick={() => setSelectedTable(null)} className="w-8 h-8 bg-neutral-800 rounded-full flex items-center justify-center text-white/40 hover:text-white">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => { setSelectedTable(null); setTransferModalOpen(false); setSplitPayMode(false); setSplitBillMode(false); }}>
+          <div className="bg-neutral-900 sm:rounded-2xl rounded-t-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col sm:mx-4" onClick={(e) => e.stopPropagation()}>
+            {/* ── HEADER ── */}
+            <div className="p-4 sm:p-5 border-b border-neutral-800/60 shrink-0">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="min-w-0">
+                  <h3 className="text-xl sm:text-2xl font-extrabold text-white">Masa {selectedTable.session.tableNumber}</h3>
+                  {selectedTable.orders.length > 0 ? (
+                    <p className="text-white/30 text-xs">{selectedTable.orders.length} siparis &middot; {new Date(selectedTable.session.openedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}&apos;den beri</p>
+                  ) : (
+                    <p className="text-white/20 text-xs">Bos masa</p>
+                  )}
+                </div>
+                <button onClick={() => { setSelectedTable(null); setTransferModalOpen(false); setSplitPayMode(false); setSplitBillMode(false); }} className="w-9 h-9 bg-neutral-800 rounded-full flex items-center justify-center text-white/40 hover:text-white shrink-0">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
+
+              {/* ── ACTION BAR ── */}
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => openAddItem(selectedTable.session.tableNumber)} className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-all active:scale-[0.96] flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                  Siparis Ekle
+                </button>
+                {selectedTable.orders.length > 0 && (
+                  <>
+                    {selectedTable.orders.filter((o) => !o.paymentMethod && o.status !== "cancelled").length >= 1 && (
+                      <button onClick={startSplitBill} className={`px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${splitBillMode ? "bg-amber-600/30 border border-amber-500/50 text-amber-300" : "bg-amber-600/15 hover:bg-amber-600/25 text-amber-400"}`}>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        Hesabi Bol
+                      </button>
+                    )}
+                    {selectedTable.orders.filter((o) => !o.paymentMethod && o.status !== "cancelled").length > 1 && (
+                      <button onClick={() => { setSplitPayMode(!splitPayMode); setPayingSingleOrder(null); setSplitBillMode(false); }} className={`px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${splitPayMode ? "bg-purple-600/30 border border-purple-500/50 text-purple-300" : "bg-purple-600/15 hover:bg-purple-600/25 text-purple-400"}`}>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        Ayri Tahsil
+                      </button>
+                    )}
+                    <button onClick={() => setTransferModalOpen(true)} className="px-3 py-2 bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      Masa Tasi
+                    </button>
+                    <button onClick={() => { const ids = selectedTable.orders.map((o) => o.id); if (ids[0]) window.open(`/receipt/${ids[0]}`, "_blank"); }} className="px-3 py-2 bg-neutral-800 hover:bg-neutral-700 text-white/50 hover:text-white/70 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                      Yazdir
+                    </button>
+                    {selectedTable.session.id !== -1 && tableUnpaidTotal === 0 && (
+                      <button onClick={closeSession} className="px-3 py-2 bg-red-600/10 hover:bg-red-600/20 text-red-400/60 hover:text-red-400 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Masayi Kapat
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-              {selectedTable.orders.map((order) => (
-                <div key={order.id} className={`rounded-xl p-4 ${order.paymentMethod ? "bg-green-900/10 border border-green-800/30" : "bg-neutral-800/30"}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-amber-400/70 text-xs font-bold">#{order.id}</span>
-                      <span className="text-white/20 text-xs">{new Date(order.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>
-                      {order.paymentMethod && <span className="bg-green-600/20 text-green-400 text-[10px] px-1.5 py-0.5 rounded">Odendi</span>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-white/50 text-xs font-semibold">{order.total.toFixed(0)} TL</span>
-                      {!order.paymentMethod && (
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => quickApproveSingleOrder(order)} className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold rounded-lg transition-all" title="Hizli onayla">
-                            Onayla
+            {/* ── CONTENT ── */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              {selectedTable.orders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-20 h-20 rounded-2xl bg-white/[0.03] flex items-center justify-center mb-5">
+                    <svg className="w-10 h-10 text-white/[0.08]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                  </div>
+                  <p className="text-white/25 text-base font-semibold mb-1">Henuz siparis yok</p>
+                  <p className="text-white/10 text-sm mb-8">Siparis ekleyerek masayi acin</p>
+                  <button onClick={() => openAddItem(selectedTable.session.tableNumber)} className="px-10 py-3.5 bg-green-600 hover:bg-green-700 text-white font-bold text-sm rounded-2xl transition-all active:scale-[0.96] flex items-center gap-2 shadow-lg shadow-green-600/20">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                    Siparis Ekle
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {selectedTable.orders.map((order) => (
+                    <div key={order.id} className={`rounded-xl p-4 ${order.paymentMethod ? "bg-green-900/10 border border-green-800/30" : order.status === "cancelled" ? "bg-red-900/10 border border-red-800/20 opacity-50" : "bg-neutral-800/30"}`}>
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-400/70 text-xs font-bold">#{order.id}</span>
+                          <span className="text-white/20 text-xs">{new Date(order.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>
+                          {order.paymentMethod && <span className="bg-green-600/20 text-green-400 text-[10px] px-1.5 py-0.5 rounded font-medium">Odendi</span>}
+                          {!order.paymentMethod && order.status !== "cancelled" && (order.paidAmount || 0) > 0 && (
+                            <span className="bg-amber-600/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded font-medium">{(order.paidAmount || 0).toFixed(0)} TL odendi</span>
+                          )}
+                          {order.status === "cancelled" && <span className="bg-red-600/20 text-red-400 text-[10px] px-1.5 py-0.5 rounded font-medium">Iptal</span>}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white/50 text-xs font-semibold">{order.total.toFixed(0)} TL</span>
+                          {!order.paymentMethod && order.status !== "cancelled" && !splitBillMode && (
+                            <>
+                              <button onClick={() => quickApproveSingleOrder(order)} className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold rounded-lg transition-all">Onayla</button>
+                              <button onClick={() => openSingleOrderPay(order)} className="px-2.5 py-1 bg-neutral-700 hover:bg-neutral-600 text-white/60 text-[10px] font-medium rounded-lg transition-all">Duzenle</button>
+                              <button onClick={() => cancelOrder(order.id)} className="px-2.5 py-1 bg-red-900/40 hover:bg-red-900/60 text-red-400/60 hover:text-red-400 text-[10px] font-medium rounded-lg transition-all">Iptal</button>
+                            </>
+                          )}
+                          {!order.paymentMethod && order.status !== "cancelled" && splitBillMode && (
+                            <button onClick={() => selectAllOrderItems(order)} className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-[10px] font-medium rounded-lg transition-all">
+                              {order.items.every((it) => splitSelectedItems.has(it.id)) ? "Secimi Kaldir" : "Tumunu Sec"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {order.status !== "cancelled" && order.items.map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => { if (splitBillMode && !order.paymentMethod) toggleSplitItem(item.id); }}
+                          className={`flex items-center justify-between py-1.5 group rounded-lg transition-all ${splitBillMode && !order.paymentMethod ? "cursor-pointer px-1.5 -mx-1.5" : ""} ${splitBillMode && splitSelectedItems.has(item.id) ? "bg-amber-500/15 ring-1 ring-amber-500/30" : ""}`}
+                        >
+                          {splitBillMode && !order.paymentMethod && (
+                            <input type="checkbox" checked={splitSelectedItems.has(item.id)} readOnly className="accent-amber-500 mr-2 shrink-0 pointer-events-none" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white/50 text-xs font-bold">{item.quantity}x</span>
+                              <span className="text-white text-sm">{item.name}</span>
+                            </div>
+                            {item.removed.length > 0 && <p className="text-red-400/50 text-[10px] ml-6">- {item.removed.join(", ")}</p>}
+                            {item.extras.length > 0 && <p className="text-amber-400/50 text-[10px] ml-6">+ {item.extras.map((e) => e.name).join(", ")}</p>}
+                            {item.notes && <p className="text-blue-400/40 text-[10px] ml-6 italic">{item.notes}</p>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs ${splitBillMode && splitSelectedItems.has(item.id) ? "text-amber-400 font-bold" : "text-white/40"}`}>{item.totalPrice.toFixed(0)} TL</span>
+                            {!order.paymentMethod && !splitBillMode && (
+                              <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => updateItemQty(order.id, item.id, item.quantity - 1)} className="w-5 h-5 bg-neutral-700 rounded text-white/40 hover:text-white text-xs flex items-center justify-center">-</button>
+                                <button onClick={() => updateItemQty(order.id, item.id, item.quantity + 1)} className="w-5 h-5 bg-neutral-700 rounded text-white/40 hover:text-white text-xs flex items-center justify-center">+</button>
+                                <button onClick={() => removeItem(order.id, item.id)} className="w-5 h-5 bg-red-900/50 rounded text-red-400/60 hover:text-red-400 text-xs flex items-center justify-center">&times;</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Single order payment inline */}
+                      {payingSingleOrder?.id === order.id && (
+                        <div className="mt-3 pt-3 border-t border-neutral-700/50 space-y-2">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/40">Hesap</span>
+                            <span className="text-white/60 font-semibold">{order.total.toFixed(0)} TL</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white text-xs font-semibold shrink-0">Tahsil:</span>
+                            <input type="number" value={singleChargedAmount} onChange={(e) => setSingleChargedAmount(e.target.value)} className="input-field text-sm font-bold text-amber-400 text-center flex-1 py-1.5" />
+                            <span className="text-white/40 text-xs">TL</span>
+                          </div>
+                          {singleChargedAmount && parseFloat(singleChargedAmount) < order.total && (
+                            <p className="text-orange-400/70 text-[10px] text-center">Indirim: {(order.total - parseFloat(singleChargedAmount)).toFixed(0)} TL</p>
+                          )}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <label className={`flex items-center justify-center gap-1 p-1.5 rounded-lg cursor-pointer border text-xs transition-all ${singlePayMethod === "cash" ? "bg-green-600/20 border-green-500/50" : "bg-surface-2 border-transparent"}`}>
+                              <input type="radio" checked={singlePayMethod === "cash"} onChange={() => setSinglePayMethod("cash")} className="hidden" />
+                              <span className="font-medium">Nakit</span>
+                            </label>
+                            <label className={`flex items-center justify-center gap-1 p-1.5 rounded-lg cursor-pointer border text-xs transition-all ${singlePayMethod === "card" ? "bg-blue-600/20 border-blue-500/50" : "bg-surface-2 border-transparent"}`}>
+                              <input type="radio" checked={singlePayMethod === "card"} onChange={() => setSinglePayMethod("card")} className="hidden" />
+                              <span className="font-medium">Kart</span>
+                            </label>
+                          </div>
+                          {singlePayMethod === "cash" && (
+                            <input type="number" placeholder="Alinan nakit..." value={singleReceivedCash} onChange={(e) => setSingleReceivedCash(e.target.value)} className="input-field text-xs py-1.5" />
+                          )}
+                          <div className="flex gap-1.5">
+                            <button onClick={() => setPayingSingleOrder(null)} className="flex-1 py-2 rounded-lg bg-neutral-800 text-white/30 text-xs font-medium">Iptal</button>
+                            <button onClick={paySingleOrder} className="flex-1 py-2 rounded-lg bg-amber-500 text-black text-xs font-bold">Tahsil Et</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Split pay mode: quick nakit/kart buttons for each unpaid order */}
+                      {splitPayMode && !order.paymentMethod && order.status !== "cancelled" && payingSingleOrder?.id !== order.id && (
+                        <div className="mt-2 pt-2 border-t border-purple-500/20 flex gap-1.5">
+                          <button onClick={() => quickApproveSingleOrder(order)} className="flex-1 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-all active:scale-[0.97]">
+                            Nakit {order.total.toFixed(0)} TL
                           </button>
-                          <button onClick={() => openSingleOrderPay(order)} className="px-2 py-1 bg-neutral-700 hover:bg-neutral-600 text-white/60 text-[10px] font-medium rounded-lg transition-all" title="Tutari duzenle">
+                          <button onClick={async () => {
+                            if (!selectedTable) return;
+                            try {
+                              const res = await fetch("/api/payments", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ orderId: order.id, amount: order.total, method: "card", receivedAmount: order.total }),
+                              });
+                              if (!res.ok) { toast.error("Islem basarisiz"); return; }
+                              toast.success("Kart ile tahsil edildi");
+                              refreshTableDetail(selectedTable.session.tableNumber);
+                              loadRegister();
+                              loadZReport();
+                            } catch { toast.error("Baglanti hatasi"); }
+                          }} className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all active:scale-[0.97]">
+                            Kart {order.total.toFixed(0)} TL
+                          </button>
+                          <button onClick={() => openSingleOrderPay(order)} className="px-2 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white/50 text-[10px] font-medium transition-all">
                             Duzenle
                           </button>
                         </div>
                       )}
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── FOOTER ── */}
+            {selectedTable.orders.length > 0 && (
+              <div className="shrink-0 border-t border-neutral-800/60 p-4 sm:p-5 space-y-3">
+                <div className="bg-neutral-800/40 rounded-xl p-3 space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/40">Toplam Hesap</span>
+                    <span className="text-white/60 font-semibold">{selectedTable.session.total.toFixed(0)} TL</span>
                   </div>
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between py-1.5 group">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/50 text-xs font-bold">{item.quantity}x</span>
-                          <span className="text-white text-sm">{item.name}</span>
+                  {tablePaidTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-green-400/60">Tahsil Edilen</span>
+                      <span className="text-green-400 font-semibold">{tablePaidTotal.toFixed(0)} TL</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-bold">
+                    <span className="text-white">Kalan</span>
+                    <span className="text-amber-400">{tableUnpaidTotal.toFixed(0)} TL</span>
+                  </div>
+                </div>
+
+                {tableUnpaidTotal > 0 && !splitPayMode && !splitBillMode && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <span className="text-white text-sm font-semibold shrink-0">Tahsil:</span>
+                      <input type="number" value={chargedAmount} onChange={(e) => setChargedAmount(e.target.value)} className="input-field text-lg font-bold text-amber-400 text-center flex-1" />
+                      <span className="text-white/40">TL</span>
+                    </div>
+                    {chargedAmount && parseFloat(chargedAmount) < tableUnpaidTotal && (
+                      <p className="text-orange-400/70 text-xs text-center">Indirim: {(tableUnpaidTotal - parseFloat(chargedAmount)).toFixed(0)} TL</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className={`flex items-center justify-center gap-2 p-2.5 rounded-xl cursor-pointer border transition-all ${payMethod === "cash" ? "bg-green-600/20 border-green-500/50" : "bg-surface-2 border-transparent"}`}>
+                        <input type="radio" checked={payMethod === "cash"} onChange={() => setPayMethod("cash")} className="hidden" />
+                        <span className="font-medium text-sm">Nakit</span>
+                      </label>
+                      <label className={`flex items-center justify-center gap-2 p-2.5 rounded-xl cursor-pointer border transition-all ${payMethod === "card" ? "bg-blue-600/20 border-blue-500/50" : "bg-surface-2 border-transparent"}`}>
+                        <input type="radio" checked={payMethod === "card"} onChange={() => setPayMethod("card")} className="hidden" />
+                        <span className="font-medium text-sm">Kart</span>
+                      </label>
+                    </div>
+                    {payMethod === "cash" && (
+                      <input type="number" placeholder="Alinan nakit..." value={receivedCash} onChange={(e) => setReceivedCash(e.target.value)} className="input-field text-sm" />
+                    )}
+                    {payMethod === "cash" && receivedCash && parseFloat(receivedCash) > parseFloat(chargedAmount || "0") && (
+                      <p className="text-green-400/70 text-xs text-center">Para ustu: {(parseFloat(receivedCash) - parseFloat(chargedAmount || "0")).toFixed(0)} TL</p>
+                    )}
+                    <Button className="w-full" onClick={payTable}>Tumunu Tahsil Et</Button>
+                  </>
+                )}
+                {tableUnpaidTotal > 0 && splitPayMode && !splitBillMode && (
+                  <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 text-center">
+                    <p className="text-purple-300 text-xs font-medium mb-1">Ayri Tahsil Modu</p>
+                    <p className="text-white/40 text-[10px]">Her siparisi yukaridaki Nakit/Kart butonlariyla ayri ayri tahsil edin</p>
+                    <button onClick={() => setSplitPayMode(false)} className="mt-2 px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white/40 rounded-lg text-[10px] font-medium transition-all">
+                      Toplu Tahsile Don
+                    </button>
+                  </div>
+                )}
+                {tableUnpaidTotal > 0 && splitBillMode && (() => {
+                  const selectedTotal = selectedTable.orders
+                    .filter((o) => !o.paymentMethod && o.status !== "cancelled")
+                    .flatMap((o) => o.items)
+                    .filter((item) => splitSelectedItems.has(item.id))
+                    .reduce((s, item) => s + item.totalPrice, 0);
+                  const splitPaidTotal = tablePaidTotal;
+                  return (
+                    <div className="space-y-3">
+                      {splitPaidTotal > 0 && (
+                        <div className="bg-green-900/15 border border-green-800/30 rounded-xl p-2.5 flex items-center justify-between">
+                          <span className="text-green-400/70 text-xs">Bu turda tahsil edilen</span>
+                          <span className="text-green-400 text-sm font-bold">{splitPaidTotal.toFixed(0)} TL</span>
                         </div>
-                        {item.removed.length > 0 && <p className="text-red-400/50 text-[10px] ml-6">- {item.removed.join(", ")}</p>}
-                        {item.extras.length > 0 && <p className="text-amber-400/50 text-[10px] ml-6">+ {item.extras.map((e) => e.name).join(", ")}</p>}
-                        {item.notes && <p className="text-blue-400/40 text-[10px] ml-6 italic">{item.notes}</p>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white/40 text-xs">{item.totalPrice.toFixed(0)} TL</span>
-                        {!order.paymentMethod && (
-                          <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => updateItemQty(order.id, item.id, item.quantity - 1)} className="w-5 h-5 bg-neutral-700 rounded text-white/40 hover:text-white text-xs flex items-center justify-center">-</button>
-                            <button onClick={() => updateItemQty(order.id, item.id, item.quantity + 1)} className="w-5 h-5 bg-neutral-700 rounded text-white/40 hover:text-white text-xs flex items-center justify-center">+</button>
-                            <button onClick={() => removeItem(order.id, item.id)} className="w-5 h-5 bg-red-900/50 rounded text-red-400/60 hover:text-red-400 text-xs flex items-center justify-center">×</button>
+                      )}
+
+                      {selectedTotal > 0 && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-amber-300 text-xs font-semibold">Secili urunler</span>
+                            <span className="text-amber-400 text-sm font-bold">{selectedTotal.toFixed(0)} TL</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button onClick={() => paySelectedItems("cash")} className="py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-all active:scale-[0.97]">
+                              Nakit {selectedTotal.toFixed(0)} TL
+                            </button>
+                            <button onClick={() => paySelectedItems("card")} className="py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all active:scale-[0.97]">
+                              Kart {selectedTotal.toFixed(0)} TL
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="bg-neutral-800/40 rounded-xl p-3">
+                        <p className="text-white/40 text-[10px] mb-2 text-center">veya serbest tutar girin</p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <input type="number" placeholder="Tutar..." value={splitCustomAmount} onChange={(e) => setSplitCustomAmount(e.target.value)} className="input-field text-sm font-bold text-amber-400 text-center flex-1 py-2" />
+                          <span className="text-white/30 text-xs">TL</span>
+                        </div>
+                        {splitCustomAmount && parseFloat(splitCustomAmount) > 0 && (
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button onClick={() => paySplitCustom("cash")} className="py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-all active:scale-[0.97]">
+                              Nakit {parseFloat(splitCustomAmount).toFixed(0)} TL
+                            </button>
+                            <button onClick={() => paySplitCustom("card")} className="py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all active:scale-[0.97]">
+                              Kart {parseFloat(splitCustomAmount).toFixed(0)} TL
+                            </button>
                           </div>
                         )}
                       </div>
-                    </div>
-                  ))}
 
-                  {/* Single order payment inline */}
-                  {payingSingleOrder?.id === order.id && (
-                    <div className="mt-3 pt-3 border-t border-neutral-700/50 space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-white/40">Hesap</span>
-                        <span className="text-white/60 font-semibold">{order.total.toFixed(0)} TL</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white text-xs font-semibold shrink-0">Tahsil:</span>
-                        <input type="number" value={singleChargedAmount} onChange={(e) => setSingleChargedAmount(e.target.value)} className="input-field text-sm font-bold text-amber-400 text-center flex-1 py-1.5" />
-                        <span className="text-white/40 text-xs">TL</span>
-                      </div>
-                      {singleChargedAmount && parseFloat(singleChargedAmount) < order.total && (
-                        <p className="text-orange-400/70 text-[10px] text-center">Indirim: {(order.total - parseFloat(singleChargedAmount)).toFixed(0)} TL</p>
-                      )}
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <label className={`flex items-center justify-center gap-1 p-1.5 rounded-lg cursor-pointer border text-xs transition-all ${singlePayMethod === "cash" ? "bg-green-600/20 border-green-500/50" : "bg-surface-2 border-transparent"}`}>
-                          <input type="radio" checked={singlePayMethod === "cash"} onChange={() => setSinglePayMethod("cash")} className="hidden" />
-                          <span className="font-medium">Nakit</span>
-                        </label>
-                        <label className={`flex items-center justify-center gap-1 p-1.5 rounded-lg cursor-pointer border text-xs transition-all ${singlePayMethod === "card" ? "bg-blue-600/20 border-blue-500/50" : "bg-surface-2 border-transparent"}`}>
-                          <input type="radio" checked={singlePayMethod === "card"} onChange={() => setSinglePayMethod("card")} className="hidden" />
-                          <span className="font-medium">Kart</span>
-                        </label>
-                      </div>
-                      {singlePayMethod === "cash" && (
-                        <input type="number" placeholder="Alinan nakit..." value={singleReceivedCash} onChange={(e) => setSingleReceivedCash(e.target.value)} className="input-field text-xs py-1.5" />
-                      )}
-                      <div className="flex gap-1.5">
-                        <button onClick={() => setPayingSingleOrder(null)} className="flex-1 py-2 rounded-lg bg-neutral-800 text-white/30 text-xs font-medium">Iptal</button>
-                        <button onClick={paySingleOrder} className="flex-1 py-2 rounded-lg bg-amber-500 text-black text-xs font-bold">Tahsil Et</button>
-                      </div>
+                      <button onClick={() => setSplitBillMode(false)} className="w-full py-2 rounded-xl bg-neutral-800 text-white/30 text-xs font-medium hover:bg-neutral-700 transition-all">
+                        Vazgec
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Table summary + pay all */}
-            <div className="shrink-0 border-t border-neutral-800/60 p-4 sm:p-5 space-y-3">
-              {/* Hesap vs Tahsil summary */}
-              <div className="bg-neutral-800/40 rounded-xl p-3 space-y-1.5">
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40">Toplam Hesap</span>
-                  <span className="text-white/60 font-semibold">{selectedTable.session.total.toFixed(0)} TL</span>
-                </div>
-                {tablePaidTotal > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-green-400/60">Tahsil Edilen</span>
-                    <span className="text-green-400 font-semibold">{tablePaidTotal.toFixed(0)} TL</span>
+                  );
+                })()}
+                {(tableUnpaidTotal === 0 || tablePaidTotal > 0) && (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => { const ids = selectedTable.orders.map((o) => o.id); if (ids[0]) window.open(`/receipt/${ids[0]}`, "_blank"); }} className="flex-1 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/50 font-medium text-sm">Yazdir</button>
+                    <button type="button" onClick={closeSession} className="flex-1 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/30 font-medium text-sm">Masayi Kapat{tableUnpaidTotal > 0 ? ` (${tableUnpaidTotal.toFixed(0)} TL kalan)` : ""}</button>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-white">Kalan</span>
-                  <span className="text-amber-400">{tableUnpaidTotal.toFixed(0)} TL</span>
-                </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
 
-              {tableUnpaidTotal > 0 && (
-                <>
-                  <div className="flex items-center gap-3">
-                    <span className="text-white text-sm font-semibold shrink-0">Tahsil:</span>
-                    <input
-                      type="number"
-                      value={chargedAmount}
-                      onChange={(e) => setChargedAmount(e.target.value)}
-                      className="input-field text-lg font-bold text-amber-400 text-center flex-1"
-                    />
-                    <span className="text-white/40">TL</span>
-                  </div>
-                  {chargedAmount && parseFloat(chargedAmount) < tableUnpaidTotal && (
-                    <p className="text-orange-400/70 text-xs text-center">Indirim: {(tableUnpaidTotal - parseFloat(chargedAmount)).toFixed(0)} TL</p>
-                  )}
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className={`flex items-center justify-center gap-2 p-2.5 rounded-xl cursor-pointer border transition-all ${payMethod === "cash" ? "bg-green-600/20 border-green-500/50" : "bg-surface-2 border-transparent"}`}>
-                      <input type="radio" checked={payMethod === "cash"} onChange={() => setPayMethod("cash")} className="hidden" />
-                      <span className="font-medium text-sm">Nakit</span>
-                    </label>
-                    <label className={`flex items-center justify-center gap-2 p-2.5 rounded-xl cursor-pointer border transition-all ${payMethod === "card" ? "bg-blue-600/20 border-blue-500/50" : "bg-surface-2 border-transparent"}`}>
-                      <input type="radio" checked={payMethod === "card"} onChange={() => setPayMethod("card")} className="hidden" />
-                      <span className="font-medium text-sm">Kart</span>
-                    </label>
-                  </div>
-                  {payMethod === "cash" && (
-                    <input type="number" placeholder="Alinan nakit..." value={receivedCash} onChange={(e) => setReceivedCash(e.target.value)} className="input-field text-sm" />
-                  )}
-                  {payMethod === "cash" && receivedCash && parseFloat(receivedCash) > parseFloat(chargedAmount || "0") && (
-                    <p className="text-green-400/70 text-xs text-center">Para ustu: {(parseFloat(receivedCash) - parseFloat(chargedAmount || "0")).toFixed(0)} TL</p>
-                  )}
-                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                    <button type="button" onClick={() => { const ids = selectedTable.orders.map((o) => o.id); if (ids[0]) window.open(`/receipt/${ids[0]}`, "_blank"); }} className="py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/50 font-medium text-xs sm:text-sm">Yazdir</button>
-                    <button type="button" onClick={() => setSelectedTable(null)} className="py-2.5 rounded-xl bg-neutral-800 text-white/30 font-medium text-xs sm:text-sm">Kapat</button>
-                    <Button onClick={payTable}>Tumunu Tahsil Et</Button>
-                  </div>
-                </>
-              )}
-              {tableUnpaidTotal === 0 && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => { const ids = selectedTable.orders.map((o) => o.id); if (ids[0]) window.open(`/receipt/${ids[0]}`, "_blank"); }} className="py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white/50 font-medium text-sm">Yazdir</button>
-                  <button type="button" onClick={() => setSelectedTable(null)} className="py-2.5 rounded-xl bg-neutral-800 text-white/30 font-medium text-sm">Kapat</button>
-                </div>
-              )}
+      {/* ══════════ TRANSFER MODAL ══════════ */}
+      {transferModalOpen && selectedTable && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTransferModalOpen(false)}>
+          <div className="bg-neutral-900 rounded-2xl w-full max-w-md mx-4 p-5 border border-neutral-700/50 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white">Masa {selectedTable.session.tableNumber} &rarr; Nereye?</h3>
+              <button onClick={() => setTransferModalOpen(false)} className="w-7 h-7 bg-neutral-800 rounded-full flex items-center justify-center text-white/40 hover:text-white">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
+            <div className="grid grid-cols-4 gap-2 max-h-[40vh] overflow-y-auto">
+              {allTables.filter((t) => t.isActive && t.number !== selectedTable.session.tableNumber).map((t) => {
+                const occupied = tableSessions.some((ts) => ts.session.tableNumber === t.number);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => transferTable(t.number)}
+                    className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all cursor-pointer active:scale-[0.95] ${
+                      occupied
+                        ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300 hover:border-indigo-400 hover:bg-indigo-500/20"
+                        : "bg-surface-1 border-border hover:border-blue-400 hover:bg-blue-500/10 text-white/60 hover:text-blue-400"
+                    }`}
+                  >
+                    <span className="text-lg font-bold">{t.number}</span>
+                    {occupied ? <span className="text-[8px]">Dolu - Birlestir</span> : <span className="text-[8px] text-white/20">Bos</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setTransferModalOpen(false)} className="w-full mt-4 py-2.5 rounded-xl bg-neutral-800 text-white/40 font-medium text-sm hover:bg-neutral-700">Vazgec</button>
           </div>
         </div>
       )}
@@ -1005,42 +1457,143 @@ export default function CashierPage() {
       )}
 
       {/* ══════════ ADD ITEM TO TABLE MODAL ══════════ */}
-      <Modal open={addItemTable !== null} onClose={() => { setAddItemTable(null); setAddCart([]); }} title={`Masa ${addItemTable} - Urun Ekle`}>
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-          {menuCats.map((cat) => {
-            const catItems = menuItems.filter((i) => i.categoryId === cat.id);
-            if (catItems.length === 0) return null;
-            return (
-              <div key={cat.id}>
-                <p className="text-xs text-white/30 font-semibold mb-1">{cat.name}</p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {catItems.map((item) => {
-                    const inCart = addCart.find((c) => c.menuItemId === item.id);
-                    return (
-                      <button key={item.id} onClick={() => addToTempCart(item)} className={`text-left p-2 rounded-lg text-sm transition-all ${inCart ? "bg-amber-500/20 border border-amber-500/40" : "bg-surface-2 border border-transparent hover:border-white/10"}`}>
-                        <div className="flex justify-between items-center">
-                          <span className="text-white/80 text-xs">{item.name}</span>
-                          <span className="text-amber-400 text-xs font-bold">{item.price.toFixed(0)}</span>
-                        </div>
-                        {inCart && <span className="text-amber-400 text-[10px] font-bold">{inCart.qty} adet</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {addCart.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-border">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-white/50">{addCart.reduce((s, c) => s + c.qty, 0)} urun</span>
-              <span className="text-amber-400 font-bold">{addCart.reduce((s, c) => s + c.price * c.qty, 0).toFixed(0)} TL</span>
+      {addItemTable !== null && (
+        <div className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => { setAddItemTable(null); setAddCart([]); setAddEditItem(null); }}>
+          <div className="bg-neutral-900 sm:rounded-2xl rounded-t-2xl w-full max-w-2xl max-h-[92vh] sm:max-h-[85vh] flex flex-col sm:mx-4" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="shrink-0 p-4 border-b border-neutral-800/60 flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">Masa {addItemTable} &mdash; Urun Ekle</h3>
+              <button onClick={() => { setAddItemTable(null); setAddCart([]); setAddEditItem(null); }} className="w-8 h-8 bg-neutral-800 rounded-full flex items-center justify-center text-white/40 hover:text-white">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
-            <Button className="w-full" onClick={submitAddItems}>Masaya Ekle</Button>
+
+            {/* Category tabs */}
+            <div className="shrink-0 flex gap-1 px-4 py-2 overflow-x-auto no-scrollbar border-b border-neutral-800/40">
+              {menuCats.map((cat) => (
+                <button key={cat.id} onClick={() => { const el = document.getElementById(`add-cat-${cat.id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors bg-surface-2 text-white/40 hover:text-white/60">
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+
+            {addEditItem && <div className="fixed inset-0 z-[65] bg-black/50 lg:hidden" onClick={() => setAddEditItem(null)} />}
+
+            {/* Menu grid */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {menuCats.map((cat) => {
+                const catItems = menuItems.filter((i) => i.categoryId === cat.id);
+                if (catItems.length === 0) return null;
+                return (
+                  <div key={cat.id} id={`add-cat-${cat.id}`}>
+                    <p className="text-xs text-white/30 font-bold uppercase tracking-wider mb-2">{cat.name}</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {catItems.map((item) => {
+                        const inCart = addCart.find((c) => c.menuItemId === item.id);
+                        const hasOptions = menuOptionsAll.some((o) => o.menuItemId === item.id);
+                        const isDetailOpen = addEditItem?.id === item.id;
+                        const itemOptsForItem = menuOptionsAll.filter((o) => o.menuItemId === item.id);
+                        const detailOptGroups = Array.from(new Set(itemOptsForItem.map((o) => o.groupName)));
+                        const detailOptCost = isDetailOpen ? addItemOpts.reduce((s, optId) => { const o = menuOptionsAll.find((x) => x.id === optId); return s + (o?.priceModifier || 0); }, 0) : 0;
+                        const detailUnitPrice = isDetailOpen ? item.price + detailOptCost : 0;
+                        const detailTotalPrice = detailUnitPrice * addItemQty;
+                        return (
+                          <div key={item.id} className="relative">
+                            <button onClick={() => handleAddItemTap(item)} className={`w-full text-left rounded-xl transition-all active:scale-[0.97] border overflow-hidden ${inCart ? "bg-amber-500/10 border-amber-500/30 ring-1 ring-amber-500/20" : "bg-surface-2 border-border hover:border-white/20"}`}>
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt={item.name} className="w-full h-20 sm:h-24 object-cover" />
+                              ) : (
+                                <div className="w-full h-14 sm:h-16 bg-neutral-800/50 flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-white/[0.06]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                </div>
+                              )}
+                              <div className="p-2">
+                                <p className="text-white/80 text-xs font-medium truncate">{item.name}</p>
+                                <div className="flex items-center justify-between mt-0.5">
+                                  <span className="text-amber-400 text-xs font-bold">{item.price.toFixed(0)} TL</span>
+                                  {inCart && <span className="text-amber-400 text-[10px] font-bold bg-amber-500/20 px-1.5 py-0.5 rounded">{inCart.qty}</span>}
+                                </div>
+                                {hasOptions && <span className="text-white/20 text-[10px]">secenekli</span>}
+                              </div>
+                            </button>
+                            {isDetailOpen && (
+                              <div className="fixed inset-x-0 bottom-0 z-[70] bg-neutral-900 border-t-2 border-amber-500/60 rounded-t-2xl overflow-hidden shadow-2xl shadow-black/40 lg:absolute lg:inset-x-0 lg:top-0 lg:bottom-auto lg:rounded-xl lg:border-2">
+                                <div className="px-3 py-2 border-b border-neutral-800/60">
+                                  <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-white text-base leading-tight">{item.name}</h3>
+                                    <button onClick={() => setAddEditItem(null)} className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 shrink-0">
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                  </div>
+                                  <span className="text-amber-400 font-extrabold text-lg">{item.price.toFixed(0)} TL</span>
+                                </div>
+                                <div className="px-3 py-2 space-y-2 max-h-[50vh] overflow-y-auto">
+                                  {detailOptGroups.map((group) => (
+                                    <div key={group}>
+                                      <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">{group}</p>
+                                      <div className="flex flex-wrap gap-1">
+                                        {itemOptsForItem.filter((o) => o.groupName === group).map((opt) => (
+                                          <button key={opt.id} onClick={() => setAddItemOpts((prev) => prev.includes(opt.id) ? prev.filter((id) => id !== opt.id) : [...prev, opt.id])} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${addItemOpts.includes(opt.id) ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                                            {opt.optionName} {opt.priceModifier > 0 && <span className="text-white/30">+{opt.priceModifier.toFixed(0)}</span>}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <textarea value={addItemNotes} onChange={(e) => setAddItemNotes(e.target.value)} placeholder="Not ekle..." rows={2} className="w-full bg-neutral-800/60 text-white rounded-lg px-2.5 py-1.5 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20 resize-none overflow-y-auto" />
+                                  <div className="flex items-center gap-2 pt-1">
+                                    <div className="flex items-center bg-neutral-800 rounded-full shrink-0">
+                                      <button onClick={() => setAddItemQty(Math.max(1, addItemQty - 1))} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 text-sm font-bold">−</button>
+                                      <span className="text-white font-bold text-sm min-w-[20px] text-center">{addItemQty}</span>
+                                      <button onClick={() => setAddItemQty(addItemQty + 1)} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black text-sm font-bold">+</button>
+                                    </div>
+                                    <button onClick={() => confirmAddItem()} className="flex-1 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs active:scale-[0.97]">
+                                      Ekle {addItemQty}x {detailTotalPrice.toFixed(0)} TL
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Cart summary + submit - always visible at bottom */}
+            <div className="shrink-0 border-t border-neutral-800/60 p-4 bg-neutral-900">
+              {addCart.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                    {addCart.map((c, i) => (
+                      <div key={i} className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1">
+                        <span className="text-white/60 text-[10px]">{c.qty}x</span>
+                        <span className="text-white/80 text-[10px] font-medium">{c.name}</span>
+                        {c.selectedOptions.length > 0 && <span className="text-amber-300/50 text-[9px]">+{c.selectedOptions.length}</span>}
+                        {c.notes && <span className="text-amber-300/50 text-[9px]">📝</span>}
+                        <span className="text-amber-400/60 text-[10px]">{(c.price * c.qty).toFixed(0)}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setAddCart((prev) => prev.filter((_, idx) => idx !== i)); }} className="text-white/20 hover:text-red-400 text-xs ml-0.5">&times;</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm">
+                      <span className="text-white/40">{addCart.reduce((s, c) => s + c.qty, 0)} urun</span>
+                      <span className="text-amber-400 font-bold ml-2">{addCart.reduce((s, c) => s + c.price * c.qty, 0).toFixed(0)} TL</span>
+                    </div>
+                    <Button className="flex-1" onClick={submitAddItems}>Masaya Ekle</Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-center text-white/15 text-sm py-1">Eklemek icin urune dokunun</p>
+              )}
+            </div>
           </div>
-        )}
-      </Modal>
+        </div>
+      )}
 
       {/* ══════════ EXPENSES TAB ══════════ */}
       {tab === "expenses" && (

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const session = getSession();
   if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
 
-  const { orderId, amount, method, receivedAmount } = await req.json();
+  const { orderId, amount, method, receivedAmount, splitPayment } = await req.json();
 
   if (!orderId || !amount || !method) {
     return NextResponse.json({ error: "orderId, amount ve method gerekli" }, { status: 400 });
@@ -34,8 +34,9 @@ export async function POST(req: NextRequest) {
     amount,
     receivedAmount,
     staffId: session.staffId,
+    splitPayment: !!splitPayment,
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
-  return NextResponse.json({ ok: true }, { status: 201 });
+  return NextResponse.json({ ok: true, totalPaid: result.totalPaid, remaining: result.remaining }, { status: 201 });
 }

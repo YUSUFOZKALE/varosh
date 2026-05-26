@@ -64,6 +64,19 @@ export async function GET() {
       return { ...item, extras, removed };
     });
 
+    const paidAmounts: Record<number, number> = {};
+    if (orderIds.length > 0) {
+      const paymentRows = db
+        .select({ orderId: schema.payments.orderId, total: sql<number>`sum(${schema.payments.amount})` })
+        .from(schema.payments)
+        .where(sql`${schema.payments.orderId} IN (${sql.join(orderIds.map((id) => sql`${id}`), sql`,`)})`)
+        .groupBy(schema.payments.orderId)
+        .all();
+      for (const row of paymentRows) {
+        paidAmounts[row.orderId] = row.total;
+      }
+    }
+
     const total = orders.reduce((sum, o) => sum + o.total, 0);
     const unpaidCount = orders.filter((o) => !o.paymentMethod).length;
 
@@ -72,6 +85,7 @@ export async function GET() {
       unpaidCount,
       orders: orders.map((o) => ({
         ...o,
+        paidAmount: paidAmounts[o.id] || 0,
         items: enrichedItems.filter((i) => i.orderId === o.id),
       })),
     };
