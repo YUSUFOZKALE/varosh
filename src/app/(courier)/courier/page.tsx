@@ -213,13 +213,28 @@ export default function CourierPage() {
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          const match = decodedText.match(/\/courier\/batch\/([a-z0-9]+)/i);
-          if (match) {
+          const batchMatch = decodedText.match(/\/courier\/batch\/([a-z0-9]+)/i);
+          if (batchMatch) {
             stopScanner();
-            router.push(`/courier/batch/${match[1]}`);
-          } else {
-            setScanError("Gecersiz QR kod");
+            router.push(`/courier/batch/${batchMatch[1]}`);
+            return;
           }
+          const trackMatch = decodedText.match(/\/track\/([a-z0-9-]+)/i);
+          if (trackMatch) {
+            stopScanner();
+            router.push(`/track/${trackMatch[1]}`);
+            return;
+          }
+          const orderMatch = decodedText.match(/\/orders?\/(\d+)/i) || decodedText.match(/^(\d+)$/);
+          if (orderMatch) {
+            stopScanner();
+            const orderId = Number(orderMatch[1]);
+            const found = deliveries.find((d) => d.id === orderId);
+            if (found) openPayment(found);
+            else toast.info(`Siparis #${orderId} teslimat listenizde yok`);
+            return;
+          }
+          setScanError("Gecersiz QR kod");
         },
         () => {}
       );
