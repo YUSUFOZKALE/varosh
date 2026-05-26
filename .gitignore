@@ -53,3 +53,6 @@ varosh.db-shm
 varosh.db
 
 certificates
+varosh_production.db
+varosh_production.db-wal
+varosh_production.db-shm
