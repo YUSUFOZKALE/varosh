@@ -1120,7 +1120,7 @@ export default function PosPage() {
         const modalTotal = (customizeItem.price + modalExtrasCost) * custQty;
         return (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => setCustomizeItem(null)}>
-            <div className="bg-neutral-900 rounded-t-3xl w-full max-w-md max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-neutral-900 rounded-t-3xl w-full max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
               <div className="p-4 border-b border-neutral-800/60 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="font-bold text-white text-lg leading-tight">{customizeItem.name}</h3>

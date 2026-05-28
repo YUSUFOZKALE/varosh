@@ -13,6 +13,15 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   delivered: ["cancelled"],
 };
 
+const DELIVERY_TRANSITIONS: Record<string, string[]> = {
+  new: ["preparing", "cancelled"],
+  pending_approval: ["new", "cancelled"],
+  preparing: ["ready", "cancelled"],
+  ready: ["on_the_way", "cancelled"],
+  on_the_way: ["delivered", "cancelled"],
+  delivered: ["cancelled"],
+};
+
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const session = getSession();
   if (!session) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
@@ -28,7 +37,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const order = db.select().from(schema.orders).where(eq(schema.orders.id, id)).get();
   if (!order) return NextResponse.json({ error: "Siparis bulunamadi" }, { status: 404 });
 
-  const allowed = VALID_TRANSITIONS[order.status];
+  const transitions = order.deliveryAddress ? DELIVERY_TRANSITIONS : VALID_TRANSITIONS;
+  const allowed = transitions[order.status];
   if (!allowed || !allowed.includes(status)) {
     return NextResponse.json({ error: `${order.status} -> ${status} gecisi gecersiz` }, { status: 400 });
   }
