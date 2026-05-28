@@ -229,9 +229,22 @@ export default function CourierPage() {
           if (orderMatch) {
             stopScanner();
             const orderId = Number(orderMatch[1]);
+            const pendingFound = pendingPackages.find((d) => d.id === orderId);
+            if (pendingFound) {
+              pickupOrderByQR(orderId);
+              return;
+            }
             const found = deliveries.find((d) => d.id === orderId);
-            if (found) openPayment(found);
-            else toast.info(`Siparis #${orderId} teslimat listenizde yok`);
+            if (found) {
+              if (found.deliveryLatitude && found.deliveryLongitude) {
+                openSingleNav(found);
+                toast.success(`Siparis #${orderId} icin navigasyon aciliyor`);
+              } else {
+                openPayment(found);
+              }
+              return;
+            }
+            toast.info(`Siparis #${orderId} teslimat listenizde yok`);
             return;
           }
           setScanError("Gecersiz QR kod");
@@ -250,6 +263,28 @@ export default function CourierPage() {
     }
     setScanning(false);
     setScanError("");
+  }
+
+  async function pickupOrderByQR(orderId: number) {
+    if (!myStaffId) {
+      toast.error("Kurye bilgisi bulunamadi");
+      return;
+    }
+    try {
+      const res = await fetch("/api/delivery/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, courierId: myStaffId }),
+      });
+      if (res.ok) {
+        toast.success(`Siparis #${orderId} teslim alindi`);
+        load();
+      } else {
+        toast.error(`Siparis #${orderId} atanamadi`);
+      }
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
   }
 
   async function openPayment(d: CourierDelivery) {
@@ -347,11 +382,34 @@ export default function CourierPage() {
         body: JSON.stringify({ orderIds: ids, courierId: myStaffId, baseUrl: window.location.origin }),
       });
       if (batchRes.ok) {
-        const { token } = await batchRes.json();
-        toast.success("Rota olusturuldu");
+        const { token, routedOrderIds } = await batchRes.json();
+        toast.success("Rota olusturuldu, navigasyon aciliyor...");
         setPickSelected(new Set());
         setPicking(false);
-        router.push(`/courier/batch/${token}`);
+
+        const assignedOrders = ids.map((id: number) =>
+          pendingPackages.find((p) => p.id === id)
+        ).filter(Boolean) as CourierDelivery[];
+        const located = (routedOrderIds || ids).map((id: number) =>
+          assignedOrders.find((o: CourierDelivery) => o.id === id)
+        ).filter((o: CourierDelivery | undefined): o is CourierDelivery => !!o && !!o.deliveryLatitude && !!o.deliveryLongitude);
+
+        if (located.length > 0) {
+          const shop = `${shopLocation[0]},${shopLocation[1]}`;
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+          if (isIOS) {
+            const daddr = located.map((d: CourierDelivery) => `${d.deliveryLatitude},${d.deliveryLongitude}`);
+            daddr.push(shop);
+            window.location.href = `maps://?saddr=${shop}&daddr=${daddr.join("+to:")}`;
+          } else {
+            const waypoints = located.map((d: CourierDelivery) => `${d.deliveryLatitude},${d.deliveryLongitude}`).join("|");
+            window.location.href = `https://www.google.com/maps/dir/?api=1&origin=${shop}&destination=${shop}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`;
+          }
+        } else {
+          router.push(`/courier/batch/${token}`);
+        }
+
+        load();
       } else {
         toast.error("Rota olusturulamadi");
         setPicking(false);

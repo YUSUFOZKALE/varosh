@@ -660,7 +660,7 @@ export default function WaiterPage() {
                             </div>
                             <span className="text-amber-400 font-extrabold text-lg">{getItemPrice(item).toFixed(0)} TL</span>
                           </div>
-                          <div className="px-3 py-2 space-y-2 max-h-[50vh] overflow-y-auto">
+                          <div className="px-3 py-2 space-y-2 max-h-[40vh] overflow-y-auto">
                             {optionGroups.map((group) => (
                               <div key={group}>
                                 <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">{group}</p>
@@ -674,7 +674,9 @@ export default function WaiterPage() {
                               </div>
                             ))}
                             <textarea value={itemNotes} onChange={(e) => setItemNotes(e.target.value)} placeholder="Not..." rows={2} className="w-full bg-neutral-800/60 text-white rounded-lg px-2.5 py-1.5 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20 resize-none overflow-y-auto" />
-                            <div className="flex items-center gap-2 pt-1">
+                          </div>
+                          <div className="px-3 py-2 border-t border-neutral-800/60">
+                            <div className="flex items-center gap-2">
                               <div className="flex items-center bg-neutral-800 rounded-full shrink-0">
                                 <button onClick={() => setItemQty(Math.max(1, itemQty - 1))} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 text-sm font-bold">−</button>
                                 <span className="text-white font-bold text-sm min-w-[20px] text-center">{itemQty}</span>

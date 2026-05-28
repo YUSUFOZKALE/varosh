@@ -202,7 +202,15 @@ export default function CourierBatchPage() {
                 <span className="text-white/40">Tutar</span>
                 <span className="text-xl font-bold text-accent">{current.total.toFixed(0)} TL</span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
+                {current.deliveryLatitude && current.deliveryLongitude && (
+                  <button
+                    onClick={() => openSingleNav(current)}
+                    className="py-3 rounded-xl bg-amber-600 text-white font-bold text-sm text-center transition-all active:scale-[0.97]"
+                  >
+                    YOL TARiFi
+                  </button>
+                )}
                 {current.customerPhone && (
                   <a
                     href={`tel:${current.customerPhone}`}
@@ -214,10 +222,11 @@ export default function CourierBatchPage() {
                 <button
                   onClick={() => openPayment(current)}
                   className={`py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-all active:scale-[0.97] ${
-                    !current.customerPhone ? "col-span-2" : ""
+                    !current.customerPhone && !(current.deliveryLatitude && current.deliveryLongitude) ? "col-span-3" :
+                    (!current.customerPhone || !(current.deliveryLatitude && current.deliveryLongitude)) ? "col-span-2" : ""
                   }`}
                 >
-                  TESLiM EDiLDi
+                  Teslim Et
                 </button>
               </div>
             </div>
