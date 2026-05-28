@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
+import { useToast } from "@/hooks/useToast";
+import { ToastContainer } from "@/components/ToastContainer";
 
 interface BatchOrder {
   id: number;
@@ -43,6 +45,9 @@ export default function CourierBatchPage() {
   const [shopLocation, setShopLocation] = useState<[number, number]>(SHOP_DEFAULT);
   const [paymentModal, setPaymentModal] = useState<BatchOrder | null>(null);
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null);
+  const [bulkDeliverModal, setBulkDeliverModal] = useState(false);
+  const [bulkDelivering, setBulkDelivering] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     const [res, settingsRes] = await Promise.all([
@@ -76,13 +81,48 @@ export default function CourierBatchPage() {
   }
 
   async function markDelivered(orderId: number, paymentMethod: string) {
-    await fetch(`/api/orders/${orderId}/status`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "delivered", paymentMethod }),
-    });
+    try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "delivered", paymentMethod }),
+      });
+      if (!res.ok) throw new Error("Sunucu hatasi");
+      toast.success(`Siparis #${orderId} teslim edildi`);
+    } catch {
+      toast.error(`Siparis #${orderId} teslim edilemedi`);
+    }
     setPaymentModal(null);
     setOrderDetail(null);
+    load();
+  }
+
+  async function bulkDeliver(paymentMethod: string) {
+    const activeOrders = orders.filter((o) => o.status !== "delivered");
+    if (activeOrders.length === 0) return;
+    setBulkDelivering(true);
+    let successCount = 0;
+    let failCount = 0;
+    for (const order of activeOrders) {
+      try {
+        const res = await fetch(`/api/orders/${order.id}/status`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "delivered", paymentMethod }),
+        });
+        if (!res.ok) throw new Error();
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    setBulkDelivering(false);
+    setBulkDeliverModal(false);
+    if (failCount === 0) {
+      toast.success(`${successCount} siparis teslim edildi`);
+    } else {
+      toast.error(`${failCount} siparis teslim edilemedi`);
+    }
     load();
   }
 
@@ -142,6 +182,7 @@ export default function CourierBatchPage() {
 
   return (
     <div className="p-4 space-y-4">
+      <ToastContainer toasts={toast.toasts} />
       <div className="text-center mb-4">
         <h1 className="text-xl font-bold">Toplu Teslimat</h1>
         <p className="text-white/40 text-sm">
@@ -155,6 +196,15 @@ export default function CourierBatchPage() {
           className="w-full py-4 rounded-2xl bg-accent text-black font-bold text-center text-lg transition-all active:scale-[0.97] shadow-lg shadow-accent/30"
         >
           Guzergahi Baslat ({locatedActive.length} durak + donus)
+        </button>
+      )}
+
+      {active.length > 1 && (
+        <button
+          onClick={() => setBulkDeliverModal(true)}
+          className="w-full py-4 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-bold text-center text-lg transition-all active:scale-[0.97]"
+        >
+          Hepsini Teslim Et ({active.length} siparis)
         </button>
       )}
 
@@ -360,6 +410,46 @@ export default function CourierBatchPage() {
                   Iptal
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkDeliverModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end justify-center" onClick={() => setBulkDeliverModal(false)}>
+          <div className="bg-neutral-900 rounded-t-3xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 text-center border-b border-neutral-800/60">
+              <h3 className="text-lg font-bold text-white">Hepsini Teslim Et</h3>
+              <p className="text-white/40 text-sm mt-1">
+                {orders.filter((o) => o.status !== "delivered").length} siparis topluca teslim edilecek
+              </p>
+              <p className="text-amber-400 text-xl font-extrabold mt-2">
+                {orders.filter((o) => o.status !== "delivered").reduce((s, o) => s + o.total, 0).toFixed(0)} TL
+              </p>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  disabled={bulkDelivering}
+                  onClick={() => bulkDeliver("cash")}
+                  className="py-4 rounded-2xl bg-green-600 hover:bg-green-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-50"
+                >
+                  {bulkDelivering ? "..." : "Nakit"}
+                </button>
+                <button
+                  disabled={bulkDelivering}
+                  onClick={() => bulkDeliver("card")}
+                  className="py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg transition-all active:scale-[0.97] disabled:opacity-50"
+                >
+                  {bulkDelivering ? "..." : "Kart"}
+                </button>
+              </div>
+              <button
+                onClick={() => setBulkDeliverModal(false)}
+                className="w-full py-3 rounded-xl bg-neutral-800 text-white/40 font-medium text-sm"
+              >
+                Iptal
+              </button>
             </div>
           </div>
         </div>

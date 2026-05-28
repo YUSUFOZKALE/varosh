@@ -287,6 +287,29 @@ export default function CourierPage() {
     }
   }
 
+  async function directDeliver(p: CourierDelivery) {
+    if (!myStaffId) {
+      toast.error("Kurye bilgisi bulunamadi");
+      return;
+    }
+    try {
+      const res = await fetch("/api/delivery/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: p.id, courierId: myStaffId }),
+      });
+      if (res.ok) {
+        toast.success(`Siparis #${p.id} teslim alindi`);
+        load();
+        openPayment(p);
+      } else {
+        toast.error(`Siparis #${p.id} atanamadi`);
+      }
+    } catch {
+      toast.error("Baglanti hatasi");
+    }
+  }
+
   async function openPayment(d: CourierDelivery) {
     setPaymentModal(d);
     const res = await fetch(`/api/orders/${d.id}`);
@@ -885,6 +908,15 @@ export default function CourierPage() {
                     <p className="text-white/40 text-xs truncate mt-0.5">{p.deliveryAddress}</p>
                   </div>
                 </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); directDeliver(p); }}
+                  className="w-full mt-2 py-2 rounded-lg bg-green-600/20 border border-green-500/30 text-green-300 font-bold text-xs transition-all active:scale-[0.97] flex items-center justify-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Direk Teslim
+                </button>
               </div>
             );
           })}

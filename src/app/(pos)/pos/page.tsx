@@ -490,11 +490,6 @@ export default function PosPage() {
                     const qty = cart.filter(c => c.menuItemId === item.id).reduce((s, c) => s + c.quantity, 0);
                     const isExpanded = customizeItem?.id === item.id;
                     const hasOpts = options.some((o) => o.menuItemId === item.id);
-                    const itemOpts = isExpanded ? options.filter((o) => o.menuItemId === item.id) : [];
-                    const ingredients = itemOpts.filter((o) => o.groupName === "Icindekiler");
-                    const extraOpts = itemOpts.filter((o) => o.groupName === "Ekstralar");
-                    const custExtrasCost = isExpanded ? extraOpts.filter((o) => custExtras.has(o.id)).reduce((s, o) => s + o.priceModifier, 0) : 0;
-                    const custTotal = isExpanded ? (customizeItem!.price + custExtrasCost) * custQty : 0;
 
                     return (
                       <div key={item.id} className="relative">
@@ -544,64 +539,6 @@ export default function PosPage() {
                             <button onClick={(e) => { e.stopPropagation(); addSimpleItem(item); }} className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-black text-sm font-bold active:bg-amber-400">+</button>
                           </div>
                         )}
-                        {isExpanded && (
-                          <div className="absolute inset-x-0 top-0 z-40 bg-neutral-900 border-2 border-amber-500/60 rounded-2xl overflow-hidden shadow-2xl shadow-black/40">
-                            <div className="px-3 py-2 border-b border-neutral-800/60">
-                              <div className="flex items-center justify-between">
-                                <h3 className="font-bold text-white text-base leading-tight">{item.name}</h3>
-                                <button onClick={() => setCustomizeItem(null)} className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 hover:text-white shrink-0">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                </button>
-                              </div>
-                              <span className="text-amber-400 font-extrabold text-lg">{getEffectivePrice(item)} TL</span>
-                            </div>
-                            <div className="px-3 py-2 space-y-2 max-h-[40vh] overflow-y-auto">
-                              {ingredients.length > 0 && (
-                                <div>
-                                  <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">Icindekiler</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {ingredients.map((ing) => {
-                                      const isRem = custRemoved.has(ing.optionName);
-                                      return (
-                                        <button key={ing.id} onClick={() => setCustRemoved((prev) => { const n = new Set(prev); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${isRem ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
-                                          {isRem && "✕ "}{ing.optionName}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                              {extraOpts.length > 0 && (
-                                <div>
-                                  <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">Ekstralar</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {extraOpts.map((ext) => {
-                                      const isSel = custExtras.has(ext.id);
-                                      return (
-                                        <button key={ext.id} onClick={() => setCustExtras((prev) => { const n = new Set(prev); if (n.has(ext.id)) n.delete(ext.id); else n.add(ext.id); return n; })} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${isSel ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
-                                          {ext.optionName} <span className={isSel ? "text-amber-400" : "text-white/30"}>+{ext.priceModifier}</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                              <textarea value={custNotes} onChange={(e) => setCustNotes(e.target.value)} placeholder="Not..." rows={2} className="w-full bg-neutral-800/60 text-white rounded-lg px-2.5 py-1.5 text-[11px] border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20 resize-none overflow-y-auto" />
-                            </div>
-                            <div className="px-3 py-2 border-t border-neutral-800/60">
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center bg-neutral-800 rounded-full shrink-0">
-                                  <button onClick={() => setCustQty(Math.max(1, custQty - 1))} className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 text-sm font-bold">−</button>
-                                  <span className="text-white font-bold text-sm min-w-[20px] text-center">{custQty}</span>
-                                  <button onClick={() => setCustQty(custQty + 1)} className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black text-sm font-bold">+</button>
-                                </div>
-                                <button onClick={addCustomizedToCart} className="flex-1 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs active:scale-[0.97]">
-                                  Ekle {custQty}x {custTotal.toFixed(0)} TL
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -610,7 +547,6 @@ export default function PosPage() {
             );
           })}
         </div>
-        {customizeItem && <div className="fixed inset-0 z-30" onClick={() => setCustomizeItem(null)} />}
       </div>
 
       {/* Right: Cart Panel */}
@@ -1175,6 +1111,74 @@ export default function PosPage() {
           </div>
         </div>
       )}
+
+      {customizeItem && (() => {
+        const modalOpts = options.filter((o) => o.menuItemId === customizeItem.id);
+        const modalIngredients = modalOpts.filter((o) => o.groupName === "Icindekiler");
+        const modalExtras = modalOpts.filter((o) => o.groupName === "Ekstralar");
+        const modalExtrasCost = modalExtras.filter((o) => custExtras.has(o.id)).reduce((s, o) => s + o.priceModifier, 0);
+        const modalTotal = (customizeItem.price + modalExtrasCost) * custQty;
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => setCustomizeItem(null)}>
+            <div className="bg-neutral-900 rounded-t-3xl w-full max-w-md max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-200" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b border-neutral-800/60 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="font-bold text-white text-lg leading-tight">{customizeItem.name}</h3>
+                  <span className="text-amber-400 font-extrabold text-xl">{customizeItem.price} TL</span>
+                </div>
+                <button onClick={() => setCustomizeItem(null)} className="w-9 h-9 bg-neutral-800 rounded-full flex items-center justify-center text-white/40 shrink-0">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {modalIngredients.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-white/40 mb-2 uppercase">Icindekiler</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {modalIngredients.map((ing) => {
+                        const isRem = custRemoved.has(ing.optionName);
+                        return (
+                          <button key={ing.id} onClick={() => setCustRemoved((prev) => { const n = new Set(prev); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isRem ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                            {isRem && "✕ "}{ing.optionName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {modalExtras.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-white/40 mb-2 uppercase">Ekstralar</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {modalExtras.map((ext) => {
+                        const isSel = custExtras.has(ext.id);
+                        return (
+                          <button key={ext.id} onClick={() => setCustExtras((prev) => { const n = new Set(prev); if (n.has(ext.id)) n.delete(ext.id); else n.add(ext.id); return n; })} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isSel ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                            {ext.optionName} <span className={isSel ? "text-amber-400" : "text-white/30"}>+{ext.priceModifier}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <textarea value={custNotes} onChange={(e) => setCustNotes(e.target.value)} placeholder="Not ekle..." rows={2} className="w-full bg-neutral-800/60 text-white rounded-xl px-3 py-2.5 text-sm border border-neutral-700/50 focus:outline-none focus:border-amber-500/40 placeholder:text-white/20 resize-none" />
+              </div>
+              <div className="p-4 border-t border-neutral-800/60 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center bg-neutral-800 rounded-full shrink-0">
+                    <button onClick={() => setCustQty(Math.max(1, custQty - 1))} className="w-10 h-10 rounded-full flex items-center justify-center text-white/80 text-lg font-bold">−</button>
+                    <span className="text-white font-bold text-lg min-w-[24px] text-center">{custQty}</span>
+                    <button onClick={() => setCustQty(custQty + 1)} className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-black text-lg font-bold">+</button>
+                  </div>
+                  <button onClick={addCustomizedToCart} className="flex-1 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-base transition-all active:scale-[0.97]">
+                    Ekle {custQty}x {modalTotal.toFixed(0)} TL
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
