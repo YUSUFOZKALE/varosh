@@ -31,10 +31,12 @@ export default function OrderMap({ onPick, onAddress, pickedLat, pickedLng, auto
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
 
+    const kadirli: L.LatLngBoundsExpression = [[37.30, 35.95], [37.45, 36.20]];
     const map = L.map(ref.current, {
       maxBoundsViscosity: 0.9,
       minZoom: 13,
-      maxZoom: 18,
+      maxZoom: 19,
+      maxBounds: kadirli,
     }).setView([shopLat, shopLng], 15);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

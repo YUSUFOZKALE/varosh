@@ -76,7 +76,7 @@ export default function ReceiptPage() {
         @media print {
           body { background: white !important; }
           .no-print { display: none !important; }
-          .receipt { width: 80mm; margin: 0 auto; padding: 0; }
+          .receipt { width: 80mm; margin: 0 auto; padding: 0; transform: scale(1.15); transform-origin: top center; }
         }
         @media screen {
           body { background: #0a0a0a !important; }

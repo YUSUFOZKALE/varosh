@@ -29,10 +29,12 @@ export default function LocationPicker({ latitude, longitude, onLocationChange }
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
+    const kadirli: L.LatLngBoundsExpression = [[37.30, 35.95], [37.45, 36.20]];
     const map = L.map(mapRef.current, {
       maxBoundsViscosity: 0.9,
       minZoom: 13,
-      maxZoom: 18,
+      maxZoom: 19,
+      maxBounds: kadirli,
     }).setView([latitude, longitude], 16);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

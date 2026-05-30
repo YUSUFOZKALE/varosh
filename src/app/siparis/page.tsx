@@ -87,6 +87,8 @@ function SiparisContent() {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<{ address: string; lat: number | null; lng: number | null } | null>(null);
   const [addingNewAddress, setAddingNewAddress] = useState(false);
+  const [addrSuggestions, setAddrSuggestions] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
+  const addrSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -277,6 +279,31 @@ function SiparisContent() {
     setStep("menu");
   }
 
+  function handleAddressInput(value: string) {
+    setAddressText(value);
+    if (addrSearchTimer.current) clearTimeout(addrSearchTimer.current);
+    if (value.trim().length < 3) { setAddrSuggestions([]); return; }
+    addrSearchTimer.current = setTimeout(async () => {
+      try {
+        const suffix = ps.businessAddress ? `, Kadirli, Osmaniye` : ", Kadirli";
+        const q = encodeURIComponent(value.trim() + suffix);
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=4`, { headers: { "Accept-Language": "tr" } });
+        const data = await res.json();
+        setAddrSuggestions(data);
+      } catch { setAddrSuggestions([]); }
+    }, 500);
+  }
+
+  function selectAddrSuggestion(s: { display_name: string; lat: string; lon: string }) {
+    const la = parseFloat(s.lat);
+    const ln = parseFloat(s.lon);
+    setPickedLat(la);
+    setPickedLng(ln);
+    const parts = s.display_name.split(",").slice(0, 3).join(",").trim();
+    setAddressText(parts);
+    setAddrSuggestions([]);
+  }
+
   // ── Cart logic (table-style) ──
   function handleItemClick(item: MenuItem) {
     if (customizeItem?.id === item.id) { setCustomizeItem(null); return; }
@@ -415,9 +442,18 @@ function SiparisContent() {
             <OrderMap onPick={(lat, lng) => { setPickedLat(lat); setPickedLng(lng); }} onAddress={(addr) => setAddressText(addr)} pickedLat={pickedLat} pickedLng={pickedLng} autoLocate />
             {pickedLat && <p className="text-xs text-green-400 mt-2 text-center">Konum secildi</p>}
           </div>
-          <div>
+          <div className="relative">
             <label className="text-xs text-white/40 mb-1 block">Adres tarifi</label>
-            <input type="text" value={addressText} onChange={(e) => setAddressText(e.target.value)} placeholder="Otomatik dolar veya kendiniz yazin..." className="w-full bg-neutral-900 rounded-2xl px-5 py-3 text-sm border border-neutral-800 text-white placeholder:text-white/25 focus:outline-none focus:border-amber-500/50" />
+            <input type="text" value={addressText} onChange={(e) => handleAddressInput(e.target.value)} placeholder="Mahalle veya sokak yazin..." className="w-full bg-neutral-900 rounded-2xl px-5 py-3 text-sm border border-neutral-800 text-white placeholder:text-white/25 focus:outline-none focus:border-amber-500/50" />
+            {addrSuggestions.length > 0 && (
+              <div className="absolute z-20 left-0 right-0 mt-1 bg-neutral-800 rounded-xl border border-neutral-700 max-h-[160px] overflow-y-auto shadow-xl">
+                {addrSuggestions.map((s, i) => (
+                  <button key={i} onClick={() => selectAddrSuggestion(s)} className="w-full text-left px-4 py-2.5 text-xs text-white/70 hover:bg-neutral-700 border-b border-neutral-700/50 last:border-0 transition-colors">
+                    {s.display_name.length > 80 ? s.display_name.slice(0, 80) + "..." : s.display_name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button onClick={saveCustomer} disabled={!name.trim() || !phone.trim() || !addressText.trim() || !pickedLat || loading} className="w-full py-4 rounded-2xl bg-amber-500 text-black font-bold text-lg disabled:opacity-40 active:scale-[0.97] transition-transform">
             {loading ? "Kaydediliyor..." : "Menuye Gec"}
@@ -474,9 +510,20 @@ function SiparisContent() {
               <p className="font-semibold text-sm text-white">Yeni Adres</p>
               <OrderMap onPick={(lat, lng) => { setPickedLat(lat); setPickedLng(lng); }} onAddress={(addr) => setAddressText(addr)} pickedLat={pickedLat} pickedLng={pickedLng} />
               {pickedLat && <p className="text-xs text-green-400 text-center">Konum secildi</p>}
-              <input type="text" value={addressText} onChange={(e) => setAddressText(e.target.value)} placeholder="Kisa adres tarifi..." className="w-full bg-neutral-800 rounded-xl px-4 py-3 text-sm border border-neutral-700 text-white placeholder:text-white/25 focus:outline-none focus:border-amber-500/50" />
+              <div className="relative">
+                <input type="text" value={addressText} onChange={(e) => handleAddressInput(e.target.value)} placeholder="Mahalle veya sokak yazin..." className="w-full bg-neutral-800 rounded-xl px-4 py-3 text-sm border border-neutral-700 text-white placeholder:text-white/25 focus:outline-none focus:border-amber-500/50" />
+                {addrSuggestions.length > 0 && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-neutral-800 rounded-xl border border-neutral-700 max-h-[140px] overflow-y-auto shadow-xl">
+                    {addrSuggestions.map((s, i) => (
+                      <button key={i} onClick={() => selectAddrSuggestion(s)} className="w-full text-left px-3 py-2 text-xs text-white/70 hover:bg-neutral-700 border-b border-neutral-700/50 last:border-0">
+                        {s.display_name.length > 70 ? s.display_name.slice(0, 70) + "..." : s.display_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => { setAddingNewAddress(false); setAddressText(""); setPickedLat(null); setPickedLng(null); }} className="py-3 rounded-xl bg-neutral-800 text-white/50 text-sm font-semibold">Iptal</button>
+                <button onClick={() => { setAddingNewAddress(false); setAddressText(""); setPickedLat(null); setPickedLng(null); setAddrSuggestions([]); }} className="py-3 rounded-xl bg-neutral-800 text-white/50 text-sm font-semibold">Iptal</button>
                 <button onClick={addNewAddress} disabled={!addressText.trim() || !pickedLat || loading} className="py-3 rounded-xl bg-amber-500 text-black text-sm font-bold disabled:opacity-40">{loading ? "..." : "Kaydet"}</button>
               </div>
             </div>

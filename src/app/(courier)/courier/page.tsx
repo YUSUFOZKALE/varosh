@@ -81,6 +81,9 @@ export default function CourierPage() {
   const [custMapIdx, setCustMapIdx] = useState<0 | 1 | null>(null);
   const [custPhoneSearching, setCustPhoneSearching] = useState(false);
   const custPhoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [custAddrSuggestions, setCustAddrSuggestions] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
+  const [custAddrSearchIdx, setCustAddrSearchIdx] = useState<0 | 1>(0);
+  const custAddrTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const mapMarkerRef = useRef<any>(null);
@@ -231,17 +234,17 @@ export default function CourierPage() {
             const orderId = Number(orderMatch[1]);
             const pendingFound = pendingPackages.find((d) => d.id === orderId);
             if (pendingFound) {
-              pickupOrderByQR(orderId);
+              setPickSelected((prev) => {
+                const next = new Set(prev);
+                next.add(orderId);
+                return next;
+              });
+              toast.success(`Siparis #${orderId} rotaya eklendi`);
               return;
             }
             const found = deliveries.find((d) => d.id === orderId);
             if (found) {
-              if (found.deliveryLatitude && found.deliveryLongitude) {
-                openSingleNav(found);
-                toast.success(`Siparis #${orderId} icin navigasyon aciliyor`);
-              } else {
-                openPayment(found);
-              }
+              openPayment(found);
               return;
             }
             toast.info(`Siparis #${orderId} teslimat listenizde yok`);
@@ -579,6 +582,35 @@ export default function CourierPage() {
     setCustMapIdx(idx);
   }
 
+  function handleCustAddrInput(idx: 0 | 1, value: string) {
+    if (!custEdit) return;
+    const addrs = [...custEdit.addresses] as [CustomerAddress, CustomerAddress];
+    addrs[idx] = { ...addrs[idx], address: value };
+    setCustEdit({ ...custEdit, addresses: addrs });
+    if (custAddrTimer.current) clearTimeout(custAddrTimer.current);
+    if (value.trim().length < 3) { setCustAddrSuggestions([]); return; }
+    setCustAddrSearchIdx(idx);
+    custAddrTimer.current = setTimeout(async () => {
+      try {
+        const q = encodeURIComponent(value.trim() + ", Kadirli, Osmaniye");
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=4`, { headers: { "Accept-Language": "tr" } });
+        const data = await res.json();
+        setCustAddrSuggestions(data);
+      } catch { setCustAddrSuggestions([]); }
+    }, 500);
+  }
+
+  function selectCustAddrSuggestion(s: { display_name: string; lat: string; lon: string }) {
+    if (!custEdit) return;
+    const la = parseFloat(s.lat);
+    const ln = parseFloat(s.lon);
+    const parts = s.display_name.split(",").slice(0, 3).join(",").trim();
+    const addrs = [...custEdit.addresses] as [CustomerAddress, CustomerAddress];
+    addrs[custAddrSearchIdx] = { ...addrs[custAddrSearchIdx], address: parts, latitude: la, longitude: ln };
+    setCustEdit({ ...custEdit, addresses: addrs });
+    setCustAddrSuggestions([]);
+  }
+
   useEffect(() => {
     if (custMapIdx === null || !mapContainerRef.current) return;
     if (mapInstanceRef.current) {
@@ -596,7 +628,8 @@ export default function CourierPage() {
         ? [addr.latitude, addr.longitude]
         : shopLocation;
 
-      const map = L.map(mapContainerRef.current!, { minZoom: 13, maxZoom: 18 }).setView(center, 16);
+      const kadirli: [[number, number], [number, number]] = [[37.30, 35.95], [37.45, 36.20]];
+      const map = L.map(mapContainerRef.current!, { minZoom: 13, maxZoom: 19, maxBounds: kadirli, maxBoundsViscosity: 0.9 }).setView(center, 16);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OSM" }).addTo(map);
       map.getContainer().style.cursor = "crosshair";
 
@@ -1101,17 +1134,24 @@ export default function CourierPage() {
                     <span className="text-xs text-white/50">Teslim adresi</span>
                   </label>
                 </div>
-                <input
-                  type="text"
-                  value={custEdit.addresses[0].address}
-                  onChange={(e) => {
-                    const addrs = [...custEdit.addresses] as [CustomerAddress, CustomerAddress];
-                    addrs[0] = { ...addrs[0], address: e.target.value };
-                    setCustEdit({ ...custEdit, addresses: addrs });
-                  }}
-                  className="w-full bg-neutral-900 rounded-lg px-3 py-2.5 text-sm text-white border border-neutral-700/50 focus:outline-none focus:border-purple-500/50"
-                  placeholder="Adres girin..."
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={custEdit.addresses[0].address}
+                    onChange={(e) => handleCustAddrInput(0, e.target.value)}
+                    className="w-full bg-neutral-900 rounded-lg px-3 py-2.5 text-sm text-white border border-neutral-700/50 focus:outline-none focus:border-purple-500/50"
+                    placeholder="Mahalle veya sokak yazin..."
+                  />
+                  {custAddrSuggestions.length > 0 && custAddrSearchIdx === 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-neutral-800 rounded-xl border border-neutral-700 max-h-[130px] overflow-y-auto shadow-xl">
+                      {custAddrSuggestions.map((s, i) => (
+                        <button key={i} onClick={() => selectCustAddrSuggestion(s)} className="w-full text-left px-3 py-2 text-xs text-white/70 hover:bg-neutral-700 border-b border-neutral-700/50 last:border-0">
+                          {s.display_name.length > 65 ? s.display_name.slice(0, 65) + "..." : s.display_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {custEdit.addresses[0].latitude && (
                   <p className="text-xs text-green-400/70 flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd"/></svg>
@@ -1151,17 +1191,24 @@ export default function CourierPage() {
                     <span className="text-xs text-white/50">Teslim adresi</span>
                   </label>
                 </div>
-                <input
-                  type="text"
-                  value={custEdit.addresses[1].address}
-                  onChange={(e) => {
-                    const addrs = [...custEdit.addresses] as [CustomerAddress, CustomerAddress];
-                    addrs[1] = { ...addrs[1], address: e.target.value };
-                    setCustEdit({ ...custEdit, addresses: addrs });
-                  }}
-                  className="w-full bg-neutral-900 rounded-lg px-3 py-2.5 text-sm text-white border border-neutral-700/50 focus:outline-none focus:border-purple-500/50"
-                  placeholder="2. adres (istege bagli)..."
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={custEdit.addresses[1].address}
+                    onChange={(e) => handleCustAddrInput(1, e.target.value)}
+                    className="w-full bg-neutral-900 rounded-lg px-3 py-2.5 text-sm text-white border border-neutral-700/50 focus:outline-none focus:border-purple-500/50"
+                    placeholder="Mahalle veya sokak yazin..."
+                  />
+                  {custAddrSuggestions.length > 0 && custAddrSearchIdx === 1 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-neutral-800 rounded-xl border border-neutral-700 max-h-[130px] overflow-y-auto shadow-xl">
+                      {custAddrSuggestions.map((s, i) => (
+                        <button key={i} onClick={() => selectCustAddrSuggestion(s)} className="w-full text-left px-3 py-2 text-xs text-white/70 hover:bg-neutral-700 border-b border-neutral-700/50 last:border-0">
+                          {s.display_name.length > 65 ? s.display_name.slice(0, 65) + "..." : s.display_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {custEdit.addresses[1].latitude && (
                   <p className="text-xs text-green-400/70 flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd"/></svg>

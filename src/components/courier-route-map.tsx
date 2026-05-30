@@ -37,12 +37,14 @@ export default function CourierRouteMap({ orders }: Props) {
     const located = orders.filter((o) => o.deliveryLatitude && o.deliveryLongitude);
     if (located.length === 0) return;
 
+    const kadirli: L.LatLngBoundsExpression = [[37.30, 35.95], [37.45, 36.20]];
     const map = L.map(mapRef.current, {
       zoomControl: true,
       attributionControl: false,
       maxBoundsViscosity: 0.9,
       minZoom: 13,
-      maxZoom: 18,
+      maxZoom: 19,
+      maxBounds: kadirli,
     });
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

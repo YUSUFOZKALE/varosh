@@ -60,10 +60,12 @@ export default function CustomerMap({ customers, onSelectCustomer, pickMode, onP
     if (!mapRef.current || mapInstance.current) return;
 
     const center: [number, number] = [ps.shopLatitude, ps.shopLongitude];
+    const kadirli: L.LatLngBoundsExpression = [[37.30, 35.95], [37.45, 36.20]];
     const map = L.map(mapRef.current, {
       maxBoundsViscosity: 0.9,
       minZoom: 13,
-      maxZoom: 18,
+      maxZoom: 19,
+      maxBounds: kadirli,
     }).setView(center, 15);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
