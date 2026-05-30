@@ -373,7 +373,7 @@ export default function TableOrderPage() {
                                   {ingredients.map((ing) => {
                                     const isRem = custRemoved.has(ing.optionName);
                                     return (
-                                      <button key={ing.id} onClick={() => setCustRemoved((p) => { const n = new Set(p); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${isRem ? "bg-red-500/15 text-red-400 line-through border border-red-500/20" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                                      <button key={ing.id} onClick={() => setCustRemoved((p) => { const n = new Set(p); if (n.has(ing.optionName)) n.delete(ing.optionName); else n.add(ing.optionName); return n; })} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${isRem ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
                                         {ing.optionName}
                                       </button>
                                     );
