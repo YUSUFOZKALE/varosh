@@ -661,7 +661,26 @@ export default function WaiterPage() {
                             <span className="text-amber-400 font-extrabold text-lg">{getItemPrice(item).toFixed(0)} TL</span>
                           </div>
                           <div className="px-3 py-2 space-y-2 max-h-[40vh] overflow-y-auto">
-                            {optionGroups.map((group) => (
+                            {(() => {
+                              const ingredients = itemOptionsForItem.filter((o) => o.groupName === "Icindekiler");
+                              if (ingredients.length === 0) return null;
+                              return (
+                                <div>
+                                  <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">Icindekiler</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {ingredients.map((ing) => {
+                                      const isRemoved = itemRemoved.includes(ing.optionName);
+                                      return (
+                                        <button key={ing.id} onClick={() => setItemRemoved((prev) => prev.includes(ing.optionName) ? prev.filter((n) => n !== ing.optionName) : [...prev, ing.optionName])} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${isRemoved ? "bg-red-500/15 text-red-400/60 line-through border border-red-500/20" : "bg-neutral-800 text-white/70 border border-neutral-700/50"}`}>
+                                          {isRemoved && "✕ "}{ing.optionName}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                            {optionGroups.filter((g) => g !== "Icindekiler").map((group) => (
                               <div key={group}>
                                 <p className="text-[11px] font-bold text-white/40 mb-1 uppercase">{group}</p>
                                 <div className="flex flex-wrap gap-1">
@@ -718,8 +737,12 @@ export default function WaiterPage() {
                     <span className="text-white/50 font-bold w-5 text-center">{c.qty}</span>
                     <button onClick={() => updateCartQty(i, 1)} className="w-5 h-5 bg-surface-2 rounded text-white/40 flex items-center justify-center">+</button>
                   </div>
-                  <span className="text-white/70 truncate">{c.name}</span>
-                  {c.notes && <span className="text-blue-400/40 italic truncate text-[10px]">({c.notes})</span>}
+                  <div className="min-w-0">
+                    <span className="text-white/70 truncate block">{c.name}</span>
+                    {c.removedIngredients.length > 0 && <p className="text-red-400/50 text-[10px]">- {c.removedIngredients.join(", ")}</p>}
+                    {c.selectedOptions.length > 0 && <p className="text-amber-400/50 text-[10px]">+ {c.selectedOptions.map((id) => menuOptions.find((o) => o.id === id)?.optionName).filter(Boolean).join(", ")}</p>}
+                    {c.notes && <p className="text-blue-400/40 italic text-[10px]">{c.notes}</p>}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 ml-1">
                   <span className="text-white/40">{(c.price * c.qty).toFixed(0)}</span>
